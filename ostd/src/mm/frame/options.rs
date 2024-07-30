@@ -72,7 +72,8 @@ impl FrameAllocOptions {
             .ok_or(Error::NoMemory)?
             .into()
         } else {
-            let mut allocator = PAGE_ALLOCATOR.get().unwrap().lock();
+            let mut allocator_guard = PAGE_ALLOCATOR.disable_irq().lock();
+            let allocator = allocator_guard.as_mut().unwrap();
             let mut vector = Vec::new();
             for _ in 0..self.nframes {
                 let paddr = allocator.alloc_page(PAGE_SIZE).ok_or(Error::NoMemory)?;

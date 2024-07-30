@@ -94,7 +94,8 @@ impl LockedHeapWithRescue {
         };
 
         let allocation_start_paddr = {
-            let mut page_allocator = PAGE_ALLOCATOR.get().unwrap().lock();
+            let mut allocator_guard = PAGE_ALLOCATOR.disable_irq().lock();
+            let page_allocator = allocator_guard.as_mut().unwrap();
             if num_frames >= MIN_NUM_FRAMES {
                 page_allocator
                     .alloc(Layout::from_size_align(num_frames * PAGE_SIZE, PAGE_SIZE).unwrap())
