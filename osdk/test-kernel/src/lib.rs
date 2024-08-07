@@ -20,6 +20,7 @@ use ostd::{
     ktest::{
         get_ktest_crate_whitelist, get_ktest_test_whitelist, KtestError, KtestItem, KtestIter,
     },
+    mm::page::allocator::PageAlloc,
 };
 use owo_colors::OwoColorize;
 use path::{KtestPath, SuffixTrie};
@@ -207,4 +208,9 @@ fn run_crate_ktests(crate_: &KtestCrate, whitelist: &Option<SuffixTrie>) -> Ktes
         return KtestResult::Failed;
     }
     KtestResult::Ok
+}
+
+#[ostd::default_page_allocator_init_fn]
+fn init_page_allocator() -> Option<Box<dyn PageAlloc>> {
+    aster_page_allocator::init()
 }

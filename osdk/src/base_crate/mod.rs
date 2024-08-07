@@ -99,6 +99,56 @@ pub fn new_base_crate(
     std::env::set_current_dir(original_dir).unwrap();
 }
 
+#[allow(unused)]
+fn add_base_dependency(crate_name: &str, crate_path: impl AsRef<Path>) {
+    let manifest_path = "Cargo.toml";
+
+    let mut manifest: toml::Table = {
+        let content = fs::read_to_string(manifest_path).unwrap();
+        toml::from_str(&content).unwrap()
+    };
+
+    // Check if "dependencies" key exists, create it if it doesn't
+    if !manifest.contains_key("dependencies") {
+        manifest.insert(
+            "dependencies".to_string(),
+            toml::Value::Table(toml::Table::new()),
+        );
+    }
+
+    let dependencies = manifest.get_mut("dependencies").unwrap();
+
+    let target_dep = toml::Table::from_str(&format!(
+        "{} = {{ path = \"{}\", default-features = false }}",
+        crate_name,
+        crate_path.as_ref().display()
+    ))
+    .unwrap();
+    dependencies.as_table_mut().unwrap().extend(target_dep);
+
+    let base_dep_str = match option_env!("OSDK_LOCAL_DEV") {
+        Some("1") => {
+            format!(
+                "{} = {{ path = \"{}\" }}",
+                crate_name,
+                crate_path.as_ref().display()
+            )
+        }
+        _ => {
+            format!(
+                "{} = {{ version = \"{}\" }}",
+                crate_name,
+                env!("CARGO_PKG_VERSION")
+            )
+        }
+    };
+    let base_dep = toml::Table::from_str(&base_dep_str).unwrap();
+    dependencies.as_table_mut().unwrap().extend(base_dep);
+
+    let content = toml::to_string(&manifest).unwrap();
+    fs::write(manifest_path, content).unwrap();
+}
+
 fn add_manifest_dependency(
     crate_name: &str,
     crate_path: impl AsRef<Path>,
