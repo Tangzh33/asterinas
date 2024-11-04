@@ -129,14 +129,19 @@ where
 }
 
 pub(crate) fn init() {
-    let allocator: Box<dyn PageAlloc>;
+    let allocator_init_res: Option<Box<dyn PageAlloc>>;
     unsafe {
         extern "Rust" {
-            fn __ostd_page_allocator_init_fn() -> Box<dyn PageAlloc>;
+            fn __ostd_page_allocator_init_fn() -> Option<Box<dyn PageAlloc>>;
         }
-        allocator = __ostd_page_allocator_init_fn();
+        allocator_init_res = __ostd_page_allocator_init_fn();
     }
-    *PAGE_ALLOCATOR.disable_irq().lock() = Some(allocator);
+    if let Some(allocator) = allocator_init_res {
+        *PAGE_ALLOCATOR.disable_irq().lock() = Some(allocator);
+    } else {
+        warn!("No page allocator is injected, using the bootstrap allocator");
+        *PAGE_ALLOCATOR.disable_irq().lock() = BOOTSTRAP_PAGE_ALLOCATOR.lock().take();
+    }
 }
 
 /// The bootstrapping phase page allocator.

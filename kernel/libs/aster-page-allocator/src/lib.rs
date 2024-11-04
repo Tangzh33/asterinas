@@ -37,7 +37,7 @@ use ostd::{
     mm::{page, page::allocator::PageAlloc, PAGE_SIZE},
 };
 
-pub fn init() -> Box<dyn PageAlloc> {
+pub fn init() -> Option<Box<dyn PageAlloc>> {
     let regions = ostd::boot::memory_regions();
     let mut allocator = Box::new(BuddyFrameAllocator::<32>::new());
     for region in regions.iter() {
@@ -70,5 +70,5 @@ pub fn init() -> Box<dyn PageAlloc> {
         (allocator.total_mem() - allocator.free_mem()) / PAGE_SIZE
     );
 
-    allocator
+    Some(allocator)
 }

@@ -135,7 +135,7 @@ fn ap_init() -> ! {
 }
 
 #[ostd::page_allocator_init_fn]
-fn init_page_allocator() -> Box<dyn PageAlloc> {
+fn init_page_allocator() -> Option<Box<dyn PageAlloc>> {
     aster_page_allocator::init()
 }
 

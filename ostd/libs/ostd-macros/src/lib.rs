@@ -271,7 +271,7 @@ pub fn page_allocator_init_fn(_attr: TokenStream, item: TokenStream) -> TokenStr
     let output = quote! {
         #[cfg(not(ktest))]
         #[no_mangle]
-        pub fn __ostd_page_allocator_init_fn() -> Box<dyn ostd::mm::page::allocator::PageAlloc> {
+        pub fn __ostd_page_allocator_init_fn() -> Option<Box<dyn ostd::mm::page::allocator::PageAlloc>> {
             #init_fn_name()
         }
 
