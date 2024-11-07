@@ -10,10 +10,12 @@ use core::str;
 
 use alloc::sync::Arc;
 use alloc::vec;
+use alloc::boxed::Box;
 
 use ostd::arch::qemu::{exit_qemu, QemuExitCode};
 use ostd::cpu::UserContext;
 use ostd::mm::{
+    page::allocator::{PageAlloc, BOOTSTRAP_PAGE_ALLOCATOR},
     CachePolicy, FallibleVmRead, FallibleVmWrite, FrameAllocOptions, PageFlags, PageProperty,
     Vaddr, VmIo, VmSpace, VmWriter, PAGE_SIZE,
 };
@@ -31,6 +33,11 @@ pub fn main() {
     let user_space = create_user_space(program_binary);
     let user_task = create_user_task(Arc::new(user_space));
     user_task.run();
+}
+
+#[ostd::page_allocator_init_fn]
+fn init_page_allocator() -> Option<Box<dyn PageAlloc>> {
+    None
 }
 
 fn create_user_space(program: &[u8]) -> UserSpace {

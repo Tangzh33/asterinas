@@ -1,6 +1,11 @@
 #![no_std]
 #![deny(unsafe_code)]
 
+use ostd::mm::page::allocator::PageAlloc;
+use alloc::boxed::Box;
+
+extern crate alloc;
+
 #[cfg(ktest)]
 mod tests {
     use ostd::prelude::*;
@@ -9,5 +14,10 @@ mod tests {
     fn it_works() {
         let memory_regions = ostd::boot::memory_regions();
         assert!(!memory_regions.is_empty());
+    }
+
+    #[ostd::default_page_allocator_init_fn]
+    fn init_page_allocator() -> Option<Box<dyn PageAlloc>> {
+        None
     }
 }

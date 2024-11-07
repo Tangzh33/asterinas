@@ -2,8 +2,17 @@
 #![deny(unsafe_code)]
 
 use ostd::prelude::*;
+use ostd::mm::page::allocator::PageAlloc;
+use alloc::boxed::Box;
+
+extern crate alloc;
 
 #[ostd::main]
 fn kernel_main() {
     println!("Hello world from guest kernel!");
+}
+
+#[ostd::page_allocator_init_fn]
+fn init_page_allocator() -> Option<Box<dyn PageAlloc>> {
+    None
 }
