@@ -12,6 +12,7 @@ INITRAMFS_FILELIST := $(BUILD_DIR)/initramfs.filelist
 INITRAMFS_IMAGE := $(BUILD_DIR)/initramfs.cpio.gz
 EXT2_IMAGE := $(BUILD_DIR)/ext2.img
 EXFAT_IMAGE := $(BUILD_DIR)/exfat.img
+METIS_IMAGE := $(BUILD_DIR)/metis.img
 INITRAMFS_EMPTY_DIRS := \
 	$(INITRAMFS)/root \
 	$(INITRAMFS)/tmp \
@@ -99,6 +100,20 @@ $(INITRAMFS)/benchmark: | $(INITRAMFS)/benchmark/bin
 $(INITRAMFS)/benchmark/bin:
 	@mkdir -p $@
 	@mkdir -p $@/../apache/logs
+	@cp /usr/local/benchmark/sysbench/bin/sysbench $@
+	@cp /usr/local/benchmark/iperf/bin/iperf3 $@
+	@cp /usr/local/benchmark/membench/membench $@
+	@cp /usr/local/benchmark/iozone $@
+	@cp -r /usr/local/benchmark/unixbench $@
+	@cp -r /usr/local/benchmark/lmbench $@
+	@cp /usr/local/benchmark/fio/bin/fio $@
+	@cp /usr/local/benchmark/sqlite-speedtest1 $@
+	@cp /usr/local/leveldb/benchmark/db_bench $@
+	@mv $@/db_bench $@/db_bench_leveldb
+	@cp /usr/local/leveldb/benchmark/db_bench_sqlite3 $@
+	@cp -r /root/tz_utils/jinix_benchmark/mosbench/metis/obj/app $@/metis
+	@cp -r /root/tz_utils/jinix_benchmark/mosbench/metis/run_in_vm.sh $@/metis
+	@mkdir -p $@/metis/data
 
 # Make necessary directories.
 $(INITRAMFS_EMPTY_DIRS):
@@ -142,8 +157,17 @@ $(EXFAT_IMAGE):
 	@fallocate -l 64M $(EXFAT_IMAGE)
 	@mkfs.exfat $(EXFAT_IMAGE)
 
+$(METIS_IMAGE):
+	@dd if=/dev/zero of=$(METIS_IMAGE) bs=2G count=15 iflag=fullblock
+	@mkfs.ext2 $(METIS_IMAGE)
+	@mkdir -p /mnt/metis_mount
+	@mount -t ext2 $(METIS_IMAGE) /mnt/metis_mount
+	@cp -r /root/tz_utils/jinix_benchmark/mosbench/metis/data/* /mnt/metis_mount/
+	@umount /mnt/metis_mount
+	@rm -rf /mnt/metis_mount/
+
 .PHONY: build
-build: $(INITRAMFS_IMAGE) $(EXT2_IMAGE) $(EXFAT_IMAGE)
+build: $(INITRAMFS_IMAGE) $(EXT2_IMAGE) $(EXFAT_IMAGE) $(METIS_IMAGE)
 
 .PHONY: format
 format:
