@@ -5,6 +5,7 @@ use crate::{
         kspace::kvirt_area::{KVirtArea, Tracked},
         page::{allocator, meta::KernelStackMeta},
         page_prop::{CachePolicy, PageFlags, PageProperty, PrivilegedPageFlags},
+        tlb::TlbFlushOp,
         PAGE_SIZE,
     },
     prelude::*,
