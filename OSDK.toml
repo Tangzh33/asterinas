@@ -16,11 +16,12 @@ args = "$(./tools/qemu_args.sh normal)"
 kcmd_args = [
     "SHELL=/bin/sh",
     "LOGNAME=root",
-    "HOME=/",
+    "HOME=/benchmark/bin/metis",
     "USER=root",
     "PATH=/bin:/benchmark",
     "init=/usr/bin/busybox",
 ]
+# init_args = ["sh", "-l", "benchmark/bin/metis/run_in_vm.sh"]
 init_args = ["sh", "-l"]
 initramfs = "test/build/initramfs.cpio.gz"
 
