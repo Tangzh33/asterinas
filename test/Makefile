@@ -115,7 +115,11 @@ $(INITRAMFS)/benchmark/bin:
 	@cp -r /root/tz_utils/jinix_benchmark/mosbench/metis/obj/app $@/metis
 	@cp -r /root/tz_utils/jinix_benchmark/mosbench/metis/run_in_vm.sh $@/metis
 	@mkdir -p $@/metis/data
-
+	@mkdir -p $@/psearchy
+	@cp /root/tz_utils/jinix_benchmark/mosbench/psearchy/mkdb/pedsort $@/psearchy
+	@cp /root/tz_utils/jinix_benchmark/mosbench/psearchy/create_dirs.sh $@/psearchy
+	@cp /root/tz_utils/jinix_benchmark/mosbench/psearchy/run_in_vm.sh $@/psearchy
+	
 # Make necessary directories.
 $(INITRAMFS_EMPTY_DIRS):
 	@mkdir -p $@
