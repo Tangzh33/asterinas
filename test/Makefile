@@ -51,6 +51,7 @@ $(INITRAMFS)/lib/x86_64-linux-gnu: | $(VDSO_LIB)
 	@cp -L /lib/x86_64-linux-gnu/libuuid.so.1 $@
 	@# required for VDSO
 	@cp -L $(VDSO_LIB) $@
+	@cp -L /lib/x86_64-linux-gnu/libdb-5.3.so $@
 
 $(VDSO_LIB): | $(VDSO_DIR) $(BINARY_CACHE_DIR)/vdso64.so
 	@# TODO: use a custom compiled vdso.so file in the future.
@@ -114,7 +115,11 @@ $(INITRAMFS)/benchmark/bin:
 	@cp -r /root/tz_utils/jinix_benchmark/mosbench/metis/obj/app $@/metis
 	@cp -r /root/tz_utils/jinix_benchmark/mosbench/metis/run_in_vm.sh $@/metis
 	@mkdir -p $@/metis/data
-
+	@mkdir -p $@/psearchy
+	@cp /root/tz_utils/jinix_benchmark/mosbench/psearchy/mkdb/pedsort $@/psearchy
+	@cp /root/tz_utils/jinix_benchmark/mosbench/psearchy/create_dirs.sh $@/psearchy
+	@cp /root/tz_utils/jinix_benchmark/mosbench/psearchy/run_in_vm.sh $@/psearchy
+	
 # Make necessary directories.
 $(INITRAMFS_EMPTY_DIRS):
 	@mkdir -p $@
