@@ -119,6 +119,10 @@ $(INITRAMFS)/benchmark/bin:
 	@cp /root/tz_utils/jinix_benchmark/mosbench/psearchy/mkdb/pedsort $@/psearchy
 	@cp /root/tz_utils/jinix_benchmark/mosbench/psearchy/create_dirs.sh $@/psearchy
 	@cp /root/tz_utils/jinix_benchmark/mosbench/psearchy/run_in_vm.sh $@/psearchy
+	@mkdir -p $@/dedup/data
+	@cp /root/tz_utils/jinix_benchmark/parsec-3.0/pkgs/kernels/dedup/inst/amd64-linux.gcc/bin/dedup $@/dedup
+	@cp /root/tz_utils/jinix_benchmark/parsec-3.0/pkgs/kernels/dedup/run_in_vm.sh $@/dedup
+	@cp /root/tz_utils/jinix_benchmark/parsec-3.0/pkgs/kernels/dedup/inputs/*.dat $@/dedup/data
 	
 # Make necessary directories.
 $(INITRAMFS_EMPTY_DIRS):
