@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use alloc::sync::Arc;
-use core::ptr::NonNull;
+use core::{ptr::NonNull, sync::atomic::Ordering};
 
 use super::{context_switch, Task, TaskContext};
 use crate::cpu_local_cell;
@@ -61,7 +61,6 @@ pub(super) fn switch_to_task(next_task: Arc<Task>) {
     // may be unmapped, leading to instant failure.
     let old_prev = PREVIOUS_TASK_PTR.load();
     PREVIOUS_TASK_PTR.store(current_task_ptr);
-    CURRENT_TASK_PTR.store(Arc::into_raw(next_task));
     // Drop the old-previously running task.
     if !old_prev.is_null() {
         // SAFETY: The pointer is set by `switch_to_task` and is guaranteed to be
@@ -73,6 +72,17 @@ pub(super) fn switch_to_task(next_task: Arc<Task>) {
     // the target task (in the code below or in `kernel_task_entry`).
     core::mem::forget(irq_guard);
 
+    while next_task
+        .is_running
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+        .is_err()
+    {
+        log::error!("A task is scheduled to multiple CPUs, retrying...");
+        core::hint::spin_loop();
+    }
+
+    CURRENT_TASK_PTR.store(Arc::into_raw(next_task));
+
     // SAFETY:
     // 1. `ctx` is only used in `reschedule()`. We have exclusive access to both the current task
     //    context and the next task context.
@@ -83,6 +93,8 @@ pub(super) fn switch_to_task(next_task: Arc<Task>) {
         context_switch(current_task_ctx_ptr, next_task_ctx_ptr);
     }
 
+    set_prev_task_not_running();
+
     // Now it's fine to drop `prev_task`. However, we choose not to do this because it is not
     // always possible. For example, `context_switch` can switch directly to the entry point of the
     // next task. Not dropping is just fine because the only consequence is that we delay the drop
@@ -90,4 +102,13 @@ pub(super) fn switch_to_task(next_task: Arc<Task>) {
 
     // See also `kernel_task_entry`.
     crate::arch::irq::enable_local();
+}
+
+pub(super) fn set_prev_task_not_running() {
+    let prev_task_ptr = PREVIOUS_TASK_PTR.load();
+    if !prev_task_ptr.is_null() {
+        unsafe {
+            (*prev_task_ptr).is_running.store(false, Ordering::Release);
+        }
+    }
 }
