@@ -296,6 +296,8 @@ impl Vmar_ {
             }
         }
 
+        cursor.flusher().sync_tlb_flush();
+
         Ok(())
     }
 
@@ -463,6 +465,7 @@ impl Vmar_ {
                         &mut |_: &mut Token| {},
                     );
                     cursor.flusher().issue_tlb_flush(TlbFlushOp::Address(va));
+                    cursor.flusher().sync_tlb_flush();
                 } else {
                     let new_frame = duplicate_frame(&frame)?;
                     prop.flags |= additional_flags;
@@ -530,6 +533,7 @@ impl Vmar_ {
         let new_vmo_backed_id_alloc = self.vmo_backed_id_alloc.load(Ordering::Acquire);
 
         cur_cursor.flusher().issue_tlb_flush(TlbFlushOp::All);
+        cur_cursor.flusher().sync_tlb_flush();
         drop(new_cursor);
         drop(cur_cursor);
 

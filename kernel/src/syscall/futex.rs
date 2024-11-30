@@ -95,7 +95,7 @@ pub fn sys_futex(
         FutexOp::FUTEX_WAIT => {
             // let timeout = get_futex_timeout(utime_addr)?;
             /* futex_wait(futex_addr as _, futex_val as _, timeout, ctx, pid).map(|_| 0) */
-            // Thread::yield_now();
+            crate::Thread::yield_now();
             Ok(0)
         }
         FutexOp::FUTEX_WAIT_BITSET => {
@@ -109,7 +109,7 @@ pub fn sys_futex(
                 pid,
             )
             .map(|_| 0) */
-            // Thread::yield_now();
+            crate::Thread::yield_now();
             Ok(0)
         }
         FutexOp::FUTEX_WAKE => {

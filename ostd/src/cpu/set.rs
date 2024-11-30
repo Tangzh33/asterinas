@@ -12,7 +12,7 @@ use super::{num_cpus, CpuId};
 #[derive(Clone, Debug, Default)]
 pub struct CpuSet {
     // A bitset representing the CPUs in the system.
-    bits: [InnerPart; NR_PARTS_NO_ALLOC],
+    pub(crate) bits: [InnerPart; NR_PARTS_NO_ALLOC],
 }
 
 type InnerPart = u64;
@@ -41,8 +41,10 @@ impl CpuSet {
     }
 
     /// Creates a new `CpuSet` with no CPUs in the system.
-    pub fn new_empty() -> Self {
-        Self::with_capacity_val(num_cpus(), 0)
+    pub const fn new_empty() -> Self {
+        Self {
+            bits: [0; NR_PARTS_NO_ALLOC],
+        }
     }
 
     /// Adds a CPU to the set.
@@ -156,8 +158,8 @@ const_assert_eq!(core::mem::size_of::<AtomicInnerPart>() * 8, BITS_PER_PART);
 
 impl AtomicCpuSet {
     /// Creates a new `AtomicCpuSet` with an initial value.
-    pub fn new(value: CpuSet) -> Self {
-        let bits = core::array::from_fn(|i| AtomicU64::new(value.bits[i]));
+    pub const fn new(value: CpuSet) -> Self {
+        let bits = [AtomicU64::new(value.bits[0]), AtomicU64::new(value.bits[1])];
         Self { bits }
     }
 
