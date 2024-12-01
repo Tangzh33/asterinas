@@ -113,7 +113,7 @@ pub(super) struct Vmar_ {
 
     vmo_backed_id_alloc: AtomicU32,
     /// The map from the VMO-backed ID to the VMA structure.
-    vma_map: RwMutex<BTreeMap<u32, VmoBackedVMA>>,
+    vma_map: RwLock<BTreeMap<u32, VmoBackedVMA>>,
 }
 
 // Make it cache-line aligned so there is no false sharing.
@@ -252,7 +252,7 @@ impl Vmar_ {
             allocator: PerCpuAllocator::new(),
 
             vmo_backed_id_alloc: AtomicU32::new(1),
-            vma_map: RwMutex::new(BTreeMap::new()),
+            vma_map: RwLock::new(BTreeMap::new()),
         })
     }
 
@@ -539,7 +539,7 @@ impl Vmar_ {
             vm_space: Arc::new(new_vmspace),
             allocator: self.allocator.fork(),
             vmo_backed_id_alloc: AtomicU32::new(new_vmo_backed_id_alloc),
-            vma_map: RwMutex::new(new_vma_map),
+            vma_map: RwLock::new(new_vma_map),
         }))
     }
 }
