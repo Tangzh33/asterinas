@@ -21,6 +21,7 @@ pub mod meta;
 use core::{
     marker::PhantomData,
     mem::ManuallyDrop,
+    ops::Deref,
     panic,
     sync::atomic::{AtomicU32, AtomicUsize, Ordering},
 };
@@ -35,13 +36,41 @@ static MAX_PADDR: AtomicUsize = AtomicUsize::new(0);
 
 /// A page with a statically-known usage, whose metadata is represented by `M`.
 #[derive(Debug)]
+#[repr(transparent)]
 pub struct Page<M: PageMeta> {
     pub(super) ptr: *const MetaSlot,
     pub(super) _marker: PhantomData<M>,
 }
 
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct PageRef<'a, M: PageMeta> {
+    pub(super) ptr: *const MetaSlot,
+    pub(super) _marker: PhantomData<&'a Page<M>>,
+}
+
 unsafe impl<M: PageMeta> Send for Page<M> {}
 unsafe impl<M: PageMeta> Sync for Page<M> {}
+
+impl<M: PageMeta> PageRef<'_, M> {
+    pub(crate) unsafe fn from_raw(paddr: Paddr) -> Self {
+        let vaddr = mapping::page_to_meta::<PagingConsts>(paddr);
+        let ptr = vaddr as *const MetaSlot;
+
+        Self {
+            ptr,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<M: PageMeta> Deref for PageRef<'_, M> {
+    type Target = Page<M>;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { core::mem::transmute(self) }
+    }
+}
 
 impl<M: PageMeta> Page<M> {
     /// Get a `Page` handle with a specific usage from a raw, unused page.
@@ -115,6 +144,13 @@ impl<M: PageMeta> Page<M> {
 
         Self {
             ptr,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn borrow(&self) -> PageRef<'_, M> {
+        PageRef {
+            ptr: self.ptr,
             _marker: PhantomData,
         }
     }
@@ -195,12 +231,43 @@ impl<M: PageMeta> Drop for Page<M> {
 ///
 /// It can also be used when the user don't care about the usage of the page.
 #[derive(Debug)]
+#[repr(transparent)]
 pub struct DynPage {
     ptr: *const MetaSlot,
 }
 
 unsafe impl Send for DynPage {}
 unsafe impl Sync for DynPage {}
+
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct DynPageRef<'a> {
+    ptr: *const MetaSlot,
+    _marker: PhantomData<&'a DynPage>,
+}
+
+impl Deref for DynPageRef<'_> {
+    type Target = DynPage;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { core::mem::transmute(self) }
+    }
+}
+
+impl DynPageRef<'_> {
+    /// # Safety
+    ///
+    /// Mustn't outlive.
+    pub(in crate::mm) unsafe fn from_raw(paddr: Paddr) -> Self {
+        let vaddr = mapping::page_to_meta::<PagingConsts>(paddr);
+        let ptr = vaddr as *const MetaSlot;
+
+        Self {
+            ptr,
+            _marker: PhantomData,
+        }
+    }
+}
 
 impl DynPage {
     /// Forget the handle to the page.
@@ -278,11 +345,35 @@ impl<M: PageMeta> TryFrom<DynPage> for Page<M> {
     }
 }
 
+impl<'a, M: PageMeta> TryFrom<DynPageRef<'a>> for PageRef<'a, M> {
+    type Error = DynPageRef<'a>;
+
+    fn try_from(dyn_page_ref: DynPageRef<'a>) -> Result<Self, Self::Error> {
+        if dyn_page_ref.usage() == M::USAGE {
+            Ok(Self {
+                ptr: dyn_page_ref.ptr,
+                _marker: PhantomData,
+            })
+        } else {
+            Err(dyn_page_ref)
+        }
+    }
+}
+
 impl<M: PageMeta> From<Page<M>> for DynPage {
     fn from(page: Page<M>) -> Self {
         let result = Self { ptr: page.ptr };
         let _ = ManuallyDrop::new(page);
         result
+    }
+}
+
+impl<'a, M: PageMeta> From<PageRef<'a, M>> for DynPageRef<'a> {
+    fn from(page_ref: PageRef<'a, M>) -> Self {
+        Self {
+            ptr: page_ref.ptr,
+            _marker: PhantomData,
+        }
     }
 }
 

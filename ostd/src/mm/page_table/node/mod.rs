@@ -30,7 +30,10 @@ mod entry;
 
 use core::{marker::PhantomData, mem::ManuallyDrop};
 
-pub(in crate::mm) use self::{child::Child, entry::Entry};
+pub(in crate::mm) use self::{
+    child::{Child, ChildRef},
+    entry::Entry,
+};
 use super::{nr_subpage_per_huge, PageTableEntryTrait};
 use crate::{
     arch::mm::{PageTableEntry, PagingConsts},
@@ -39,7 +42,7 @@ use crate::{
         page::{
             self, inc_page_ref_count,
             meta::{MapTrackingStatus, PageMeta, PageTablePageMeta, PageUsage},
-            DynPage, Page,
+            DynPage, Page, PageRef,
         },
         Paddr, PagingConstsTrait, PagingLevel, PAGE_SIZE,
     },
@@ -54,12 +57,12 @@ use crate::{
 /// Only the CPU or a PTE can access a page table node using a raw handle. To access the page
 /// table node from the kernel code, use the handle [`PageTableNode`].
 #[derive(Debug)]
+#[repr(transparent)]
 pub(super) struct RawPageTableNode<E: PageTableEntryTrait, C: PagingConstsTrait>
 where
     [(); C::NR_LEVELS as usize]:,
 {
-    raw: Paddr,
-    level: PagingLevel,
+    encoded_raw_level: Paddr,
     _phantom: PhantomData<(E, C)>,
 }
 
@@ -68,11 +71,11 @@ where
     [(); C::NR_LEVELS as usize]:,
 {
     pub(super) fn paddr(&self) -> Paddr {
-        self.raw
+        self.encoded_raw_level & !0xff
     }
 
     pub(super) fn level(&self) -> PagingLevel {
-        self.level
+        (self.encoded_raw_level & 0xff) as PagingLevel
     }
 
     /// Converts a raw handle to an accessible handle by pertaining the lock.
@@ -81,12 +84,13 @@ where
     /// that preemption is disabled while the lock is held, or if the page is
     /// not shared with other CPUs.
     ///
-    // FIXME: To avoid extra preemption count increment and decrement we should
-    // mark it unsafe. We cannot let this guard take the reference of the preempt
-    // guard because a field cannot reference another field in the same structure.
-    pub(super) fn lock(self) -> PageTableNode<E, C> {
-        let level = self.level;
-        let page: Page<PageTablePageMeta<E, C>> = self.into();
+    /// # Safety
+    ///
+    /// preemption must be disabled.
+    /// the returned node must have a lifetime shorter than the raw handle.
+    pub(super) unsafe fn lock(&self) -> PageTableNode<E, C> {
+        let level = self.level();
+        let page = PageRef::<PageTablePageMeta<E, C>>::from_raw(self.paddr());
 
         debug_assert_eq!(page.meta().level, level);
 
@@ -103,10 +107,30 @@ where
         self.inc_ref_count();
 
         Self {
-            raw: self.raw,
-            level: self.level,
+            encoded_raw_level: self.encoded_raw_level,
             _phantom: PhantomData,
         }
+    }
+
+    /// Allocates a new empty page table node.
+    ///
+    /// This function returns an owning handle. The newly created handle does not
+    /// set the lock bit for performance as it is exclusive and unlocking is an
+    /// extra unnecessary expensive operation.
+    pub(super) fn alloc(level: PagingLevel, is_tracked: MapTrackingStatus) -> Self {
+        let meta = PageTablePageMeta::new(level, is_tracked);
+        let page = page::allocator::alloc_single::<PageTablePageMeta<E, C>>(meta).unwrap();
+
+        // Zero out the page table node.
+        let ptr = paddr_to_vaddr(page.paddr()) as *mut u8;
+        // SAFETY: The page is exclusively owned here. Pointers are valid also.
+        // We rely on the fact that 0 represents an absent entry to speed up `memset`.
+        unsafe { core::ptr::write_bytes(ptr, 0, PAGE_SIZE) };
+        debug_assert!(E::new_absent().as_bytes().iter().all(|&b| b == 0));
+
+        let page = ManuallyDrop::new(page);
+
+        unsafe { Self::from_raw_parts(page.paddr(), level) }
     }
 
     /// Activates the page table assuming it is a root page table.
@@ -131,25 +155,21 @@ where
             mm::CachePolicy,
         };
 
-        assert_eq!(self.level, C::NR_LEVELS);
+        assert_eq!(self.level(), C::NR_LEVELS);
 
         let last_activated_paddr = current_page_table_paddr();
 
-        if last_activated_paddr == self.raw {
+        if last_activated_paddr == self.paddr() {
             return;
         }
 
-        activate_page_table(self.raw, CachePolicy::Writeback);
+        activate_page_table(self.paddr(), CachePolicy::Writeback);
 
         // Increment the reference count of the current page table.
         self.inc_ref_count();
 
         // Restore and drop the last activated page table.
-        drop(Self {
-            raw: last_activated_paddr,
-            level: C::NR_LEVELS,
-            _phantom: PhantomData,
-        });
+        drop(Self::from_raw_parts(last_activated_paddr, C::NR_LEVELS));
     }
 
     /// Activates the (root) page table assuming it is the first activation.
@@ -161,7 +181,7 @@ where
 
         self.inc_ref_count();
 
-        activate_page_table(self.raw, CachePolicy::Writeback);
+        activate_page_table(self.paddr(), CachePolicy::Writeback);
     }
 
     fn inc_ref_count(&self) {
@@ -181,8 +201,7 @@ where
     /// restored once. The level must match the level of the page table node.
     pub(super) unsafe fn from_raw_parts(paddr: Paddr, level: PagingLevel) -> Self {
         Self {
-            raw: paddr,
-            level,
+            encoded_raw_level: paddr | (level as Paddr),
             _phantom: PhantomData,
         }
     }
@@ -213,13 +232,41 @@ where
     }
 }
 
+#[repr(transparent)]
+#[derive(Debug)]
+pub(super) struct RawNodeRef<'a, E: PageTableEntryTrait, C: PagingConstsTrait>
+where
+    [(); C::NR_LEVELS as usize]:,
+{
+    encoded_raw_level: Paddr,
+    _phantom: PhantomData<&'a RawPageTableNode<E, C>>,
+}
+
+impl<E: PageTableEntryTrait, C: PagingConstsTrait> RawNodeRef<'_, E, C>
+where
+    [(); C::NR_LEVELS as usize]:,
+{
+    /// # Safety
+    ///
+    /// The caller must ensure that the lifetime of the raw handle is longer
+    /// than the lifetime of the reference.
+    pub(super) unsafe fn from_raw_parts(paddr: Paddr, level: PagingLevel) -> Self {
+        Self {
+            encoded_raw_level: paddr | (level as Paddr),
+            _phantom: PhantomData,
+        }
+    }
+
+    pub(super) fn deref(&self) -> &RawPageTableNode<E, C> {
+        unsafe { core::mem::transmute(self) }
+    }
+}
+
 /// A mutable handle to a page table node.
 ///
 /// The page table node can own a set of handles to children, ensuring that the children
 /// don't outlive the page table node. Cloning a page table node will create a deep copy
-/// of the page table. Dropping the page table node will also drop all handles if the page
-/// table node has no references. You can set the page table node as a child of another
-/// page table node.
+/// of the page table.
 #[derive(Debug)]
 pub(super) struct PageTableNode<
     E: PageTableEntryTrait = PageTableEntry,
@@ -227,7 +274,7 @@ pub(super) struct PageTableNode<
 > where
     [(); C::NR_LEVELS as usize]:,
 {
-    page: Page<PageTablePageMeta<E, C>>,
+    page: PageRef<'static, PageTablePageMeta<E, C>>,
 }
 
 impl<E: PageTableEntryTrait, C: PagingConstsTrait> PageTableNode<E, C>
@@ -256,48 +303,18 @@ where
         self.page.meta().is_tracked
     }
 
-    /// Allocates a new empty page table node.
-    ///
-    /// This function returns an owning handle. The newly created handle does not
-    /// set the lock bit for performance as it is exclusive and unlocking is an
-    /// extra unnecessary expensive operation.
-    pub(super) fn alloc(level: PagingLevel, is_tracked: MapTrackingStatus) -> Self {
-        let meta = PageTablePageMeta::new_locked(level, is_tracked);
-        let page = page::allocator::alloc_single::<PageTablePageMeta<E, C>>(meta).unwrap();
-
-        // Zero out the page table node.
-        let ptr = paddr_to_vaddr(page.paddr()) as *mut u8;
-        // SAFETY: The page is exclusively owned here. Pointers are valid also.
-        // We rely on the fact that 0 represents an absent entry to speed up `memset`.
-        unsafe { core::ptr::write_bytes(ptr, 0, PAGE_SIZE) };
-        debug_assert!(E::new_absent().as_bytes().iter().all(|&b| b == 0));
-
-        Self { page }
-    }
-
     /// Converts the handle into a raw handle to be stored in a PTE or CPU.
-    pub(super) fn into_raw(self) -> RawPageTableNode<E, C> {
-        let this = ManuallyDrop::new(self);
-
+    pub(super) fn into_raw(self) -> RawNodeRef<'static, E, C> {
         // Release the lock.
         // SAFETY:
         //  - The lock stays at the metadata slot so it's pinned.
         //  - The constructor of the node guard ensures that the lock is held,
         //    and no preemption is allowed.
-        unsafe { this.page.meta().lock.unlock() };
+        unsafe { self.page.meta().lock.unlock() };
 
         // SAFETY: The provided physical address is valid and the level is
         // correct. The reference count is not changed.
-        unsafe { RawPageTableNode::from_raw_parts(this.page.paddr(), this.page.meta().level) }
-    }
-
-    /// Gets a raw handle while still preserving the original handle.
-    pub(super) fn clone_raw(&self) -> RawPageTableNode<E, C> {
-        let page = ManuallyDrop::new(self.page.clone());
-
-        // SAFETY: The provided physical address is valid and the level is
-        // correct. The reference count is increased by one.
-        unsafe { RawPageTableNode::from_raw_parts(page.paddr(), page.meta().level) }
+        unsafe { RawNodeRef::from_raw_parts(self.page.paddr(), self.page.meta().level) }
     }
 
     /// Gets the number of valid PTEs in the node.

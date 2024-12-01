@@ -11,13 +11,13 @@
 pub mod options;
 mod segment;
 
-use core::mem::ManuallyDrop;
+use core::{marker::PhantomData, ops::Deref};
 
 pub use segment::Segment;
 
 use super::page::{
     meta::{FrameMeta, MetaSlot, PageMeta, PageUsage},
-    DynPage, Page,
+    DynPage, DynPageRef, Page, PageRef,
 };
 use crate::{
     mm::{
@@ -37,8 +37,23 @@ use crate::{
 /// `Frame` that refer to the same page frame are dropped, the page frame
 /// will be globally freed.
 #[derive(Debug, Clone)]
+#[repr(transparent)]
 pub struct Frame {
     page: Page<FrameMeta>,
+}
+
+/// A reference to a frame.
+#[repr(transparent)]
+pub struct FrameRef<'a> {
+    page: PageRef<'a, FrameMeta>,
+}
+
+impl Deref for FrameRef<'_> {
+    type Target = Frame;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { core::mem::transmute(self) }
+    }
 }
 
 impl Frame {
@@ -100,6 +115,12 @@ impl From<Page<FrameMeta>> for Frame {
     }
 }
 
+impl<'a> From<PageRef<'a, FrameMeta>> for FrameRef<'a> {
+    fn from(page: PageRef<'a, FrameMeta>) -> Self {
+        Self { page }
+    }
+}
+
 impl TryFrom<DynPage> for Frame {
     type Error = DynPage;
 
@@ -109,6 +130,18 @@ impl TryFrom<DynPage> for Frame {
     /// return the dynamic page itself as is.
     fn try_from(page: DynPage) -> core::result::Result<Self, Self::Error> {
         page.try_into().map(|p: Page<FrameMeta>| p.into())
+    }
+}
+
+impl<'a> TryFrom<DynPageRef<'a>> for FrameRef<'a> {
+    type Error = DynPageRef<'a>;
+
+    /// Try converting a [`DynPageRef`] into the statically-typed [`FrameRef`].
+    ///
+    /// If the dynamic page is not used as an untyped page frame, it will
+    /// return the dynamic page itself as is.
+    fn try_from(page: DynPageRef<'a>) -> core::result::Result<Self, Self::Error> {
+        page.try_into().map(|p: PageRef<'a, FrameMeta>| p.into())
     }
 }
 
@@ -189,24 +222,6 @@ impl PageMeta for FrameMeta {
 
 // Here are implementations for `xarray`.
 
-use core::{marker::PhantomData, ops::Deref};
-
-/// `FrameRef` is a struct that can work as `&'a Frame`.
-///
-/// This is solely useful for [`crate::collections::xarray`].
-pub struct FrameRef<'a> {
-    inner: ManuallyDrop<Frame>,
-    _marker: PhantomData<&'a Frame>,
-}
-
-impl Deref for FrameRef<'_> {
-    type Target = Frame;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
 // SAFETY: `Frame` is essentially an `*const MetaSlot` that could be used as a `*const` pointer.
 // The pointer is also aligned to 4.
 unsafe impl xarray::ItemEntry for Frame {
@@ -232,8 +247,10 @@ unsafe impl xarray::ItemEntry for Frame {
 
     unsafe fn raw_as_ref<'a>(raw: *const ()) -> Self::Ref<'a> {
         Self::Ref {
-            inner: ManuallyDrop::new(Frame::from_raw(raw)),
-            _marker: PhantomData,
+            page: PageRef::<FrameMeta> {
+                ptr: raw as *const MetaSlot,
+                _marker: PhantomData,
+            },
         }
     }
 }

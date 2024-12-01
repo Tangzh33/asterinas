@@ -97,7 +97,7 @@ impl PageTable<UserMode> {
 
     /// Clear the page table.
     pub(in crate::mm) fn clear(&self, mut flusher: TlbFlusher) {
-        let mut root_node = self.root.clone_shallow().lock();
+        let mut root_node = unsafe { self.root.lock() };
         const NR_PTES_PER_NODE: usize = nr_subpage_per_huge::<PagingConsts>();
         for i in 0..NR_PTES_PER_NODE / 2 {
             let root_entry = root_node.entry(i);
@@ -121,9 +121,10 @@ impl PageTable<KernelMode> {
     /// duplicate the kernel page table with all the kernel mappings shared.
     pub fn create_user_page_table(&self) -> PageTable<UserMode> {
         let _preempt_guard = disable_preempt();
-        let mut root_node = self.root.clone_shallow().lock();
-        let mut new_node =
-            PageTableNode::alloc(PagingConsts::NR_LEVELS, MapTrackingStatus::NotApplicable);
+        let mut root_node = unsafe { self.root.lock() };
+        let new_node_raw =
+            RawPageTableNode::alloc(PagingConsts::NR_LEVELS, MapTrackingStatus::NotApplicable);
+        let mut new_node = unsafe { new_node_raw.lock() };
 
         // Make a shallow copy of the root node in the kernel space range.
         // The user space range is not copied.
@@ -131,12 +132,12 @@ impl PageTable<KernelMode> {
         for i in NR_PTES_PER_NODE / 2..NR_PTES_PER_NODE {
             let root_entry = root_node.entry(i);
             if !root_entry.is_none() {
-                let _ = new_node.entry(i).replace(root_entry.to_owned());
+                let _ = new_node.entry(i).replace(root_entry.borrow().to_owned());
             }
         }
 
         PageTable::<UserMode> {
-            root: new_node.into_raw(),
+            root: new_node_raw,
             _phantom: PhantomData,
         }
     }
@@ -156,7 +157,7 @@ impl PageTable<KernelMode> {
         let end = root_index.end;
         debug_assert!(end <= NR_PTES_PER_NODE);
 
-        let mut root_node = self.root.clone_shallow().lock();
+        let mut root_node = unsafe { self.root.lock() };
         for i in start..end {
             let root_entry = root_node.entry(i);
             if root_entry.is_none() {
@@ -168,8 +169,8 @@ impl PageTable<KernelMode> {
                 } else {
                     MapTrackingStatus::Untracked
                 };
-                let node = PageTableNode::alloc(nxt_level, is_tracked);
-                let _ = root_entry.replace(Child::PageTable(node.into_raw()));
+                let node = RawPageTableNode::alloc(nxt_level, is_tracked);
+                let _ = root_entry.replace(Child::PageTable(node));
             }
         }
     }
@@ -205,8 +206,7 @@ where
     /// Create a new empty page table. Useful for the kernel page table and IOMMU page tables only.
     pub fn empty() -> Self {
         PageTable {
-            root: PageTableNode::<E, C>::alloc(C::NR_LEVELS, MapTrackingStatus::NotApplicable)
-                .into_raw(),
+            root: RawPageTableNode::<E, C>::alloc(C::NR_LEVELS, MapTrackingStatus::NotApplicable),
             _phantom: PhantomData,
         }
     }
@@ -342,7 +342,9 @@ pub(super) unsafe fn page_walk<E: PageTableEntryTrait, C: PagingConstsTrait>(
 /// The interface for defining architecture-specific page table entries.
 ///
 /// Note that a default PTE should be a PTE that points to nothing.
-pub trait PageTableEntryTrait: Clone + Copy + Debug + Default + Pod + Sized + Sync {
+pub trait PageTableEntryTrait:
+    Clone + Copy + Debug + Default + Pod + Sized + Sync + 'static
+{
     /// Create a set of new invalid page table flags that indicates an absent page.
     ///
     /// Note that currently the implementation requires an all zero PTE to be an absent PTE.

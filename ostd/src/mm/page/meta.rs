@@ -213,9 +213,9 @@ impl<E: PageTableEntryTrait, C: PagingConstsTrait> PageTablePageMeta<E, C>
 where
     [(); C::NR_LEVELS as usize]:,
 {
-    pub fn new_locked(level: PagingLevel, is_tracked: MapTrackingStatus) -> Self {
+    pub fn new(level: PagingLevel, is_tracked: MapTrackingStatus) -> Self {
         Self {
-            lock: spin::queued::LockBody::new_locked(),
+            lock: spin::queued::LockBody::new(),
             nr_children: UnsafeCell::new(0),
             level,
             is_tracked,

@@ -65,13 +65,14 @@
 //! table cursor should add additional entry point checks to prevent these defined
 //! behaviors if they are not wanted.
 
-use core::{any::TypeId, marker::PhantomData, mem::ManuallyDrop, ops::Range};
+use core::{any::TypeId, marker::PhantomData, ops::Range};
 
 use align_ext::AlignExt;
 
 use super::{
-    page_size, pte_index, Child, Entry, KernelMode, PageTable, PageTableEntryTrait, PageTableError,
-    PageTableMode, PageTableNode, PagingConstsTrait, PagingLevel, RawPageTableNode, UserMode,
+    node::ChildRef, page_size, pte_index, Child, Entry, KernelMode, PageTable, PageTableEntryTrait,
+    PageTableError, PageTableMode, PageTableNode, PagingConstsTrait, PagingLevel, RawNodeRef,
+    RawPageTableNode, UserMode,
 };
 use crate::{
     mm::{
@@ -215,10 +216,8 @@ where
                 // and allocate a new page table node.
                 // SAFETY: The address and level corresponds to a child converted into
                 // a PTE and we clone it to get a new handle to the node.
-                let raw =
-                    unsafe { RawPageTableNode::<E, C>::from_raw_parts(cur_pt_addr, cursor.level) };
-                let _inc_ref = ManuallyDrop::new(raw.clone_shallow());
-                let mut node = raw.lock();
+                let raw = unsafe { RawNodeRef::<E, C>::from_raw_parts(cur_pt_addr, cursor.level) };
+                let mut node = unsafe { raw.deref().lock() };
                 let cur_entry = node.entry(start_idx);
                 if cur_entry.is_none() {
                     let is_tracked = if should_map_as_tracked(va.start) {
@@ -226,18 +225,17 @@ where
                     } else {
                         MapTrackingStatus::Untracked
                     };
-                    let pt = PageTableNode::<E, C>::alloc(cursor.level - 1, is_tracked);
-                    let pt = pt.into_raw();
+                    let pt = RawPageTableNode::<E, C>::alloc(cursor.level - 1, is_tracked);
                     cur_pt_addr = pt.paddr();
                     let _ = cur_entry.replace(Child::PageTable(pt));
                 } else if cur_entry.is_node() {
-                    let Child::PageTable(pt) = cur_entry.to_owned() else {
+                    let ChildRef::PageTable(pt) = cur_entry.borrow() else {
                         unreachable!();
                     };
-                    cur_pt_addr = pt.paddr();
+                    cur_pt_addr = pt.deref().paddr();
                 } else if let Some(split_child) = cur_entry.split_if_huge_token() {
                     let pt = split_child.into_raw();
-                    cur_pt_addr = pt.paddr();
+                    cur_pt_addr = pt.deref().paddr();
                 } else {
                     break;
                 }
@@ -247,9 +245,8 @@ where
 
         // SAFETY: The address and level corresponds to a child converted into
         // a PTE and we clone it to get a new handle to the node.
-        let raw = unsafe { RawPageTableNode::<E, C>::from_raw_parts(cur_pt_addr, cursor.level) };
-        let _inc_ref = ManuallyDrop::new(raw.clone_shallow());
-        let lock = raw.lock();
+        let raw = unsafe { RawNodeRef::<E, C>::from_raw_parts(cur_pt_addr, cursor.level) };
+        let lock = unsafe { raw.deref().lock() };
         cursor.guards[cursor.level as usize - 1] = Some(lock);
         cursor.guard_level = cursor.level;
 
@@ -266,21 +263,26 @@ where
             let level = self.level;
             let va = self.va;
 
-            match self.cur_entry().to_owned() {
-                Child::PageTable(pt) => {
-                    self.push_level(pt.lock());
+            match self.cur_entry().borrow() {
+                ChildRef::PageTable(pt) => {
+                    let lock = unsafe { pt.deref().lock() };
+                    self.push_level(lock);
                     continue;
                 }
-                Child::None => {
+                ChildRef::None => {
                     return Ok(PageTableItem::NotMapped {
                         va,
                         len: page_size::<C>(level),
                     });
                 }
-                Child::Page(page, prop) => {
-                    return Ok(PageTableItem::Mapped { va, page, prop });
+                ChildRef::Page(page, prop) => {
+                    return Ok(PageTableItem::Mapped {
+                        va,
+                        page: page.clone(),
+                        prop,
+                    });
                 }
-                Child::Untracked(pa, plevel, prop) => {
+                ChildRef::Untracked(pa, plevel, prop) => {
                     debug_assert_eq!(plevel, level);
                     return Ok(PageTableItem::MappedUntracked {
                         va,
@@ -289,7 +291,7 @@ where
                         prop,
                     });
                 }
-                Child::Token(token) => {
+                ChildRef::Token(token) => {
                     return Ok(PageTableItem::Marked {
                         va,
                         len: page_size::<C>(level),
@@ -480,23 +482,25 @@ where
             debug_assert!(self.0.should_map_as_tracked());
             let cur_level = self.0.level;
             let cur_entry = self.0.cur_entry();
-            match cur_entry.to_owned() {
-                Child::PageTable(pt) => {
-                    self.0.push_level(pt.lock());
+            match cur_entry.borrow() {
+                ChildRef::PageTable(pt) => {
+                    let lock = unsafe { pt.deref().lock() };
+                    self.0.push_level(lock);
                 }
-                Child::None => {
+                ChildRef::None => {
                     let pt =
-                        PageTableNode::<E, C>::alloc(cur_level - 1, MapTrackingStatus::Tracked);
-                    let _ = cur_entry.replace(Child::PageTable(pt.clone_raw()));
-                    self.0.push_level(pt);
+                        RawPageTableNode::<E, C>::alloc(cur_level - 1, MapTrackingStatus::Tracked);
+                    let lock = unsafe { pt.lock() };
+                    let _ = cur_entry.replace(Child::PageTable(pt));
+                    self.0.push_level(lock);
                 }
-                Child::Page(_, _) => {
+                ChildRef::Page(_, _) => {
                     panic!("Mapping a smaller page in an already mapped huge page");
                 }
-                Child::Untracked(_, _, _) => {
+                ChildRef::Untracked(_, _, _) => {
                     panic!("Mapping a tracked page in an untracked range");
                 }
-                Child::Token(_) => {
+                ChildRef::Token(_) => {
                     let split_child = cur_entry.split_if_huge_token().unwrap();
                     self.0.push_level(split_child);
                 }
@@ -565,26 +569,28 @@ where
             {
                 let cur_level = self.0.level;
                 let cur_entry = self.0.cur_entry();
-                match cur_entry.to_owned() {
-                    Child::PageTable(pt) => {
-                        self.0.push_level(pt.lock());
+                match cur_entry.borrow() {
+                    ChildRef::PageTable(pt) => {
+                        let lock = unsafe { pt.deref().lock() };
+                        self.0.push_level(lock);
                     }
-                    Child::None => {
-                        let pt = PageTableNode::<E, C>::alloc(
+                    ChildRef::None => {
+                        let pt = RawPageTableNode::<E, C>::alloc(
                             cur_level - 1,
                             MapTrackingStatus::Untracked,
                         );
-                        let _ = cur_entry.replace(Child::PageTable(pt.clone_raw()));
-                        self.0.push_level(pt);
+                        let lock = unsafe { pt.lock() };
+                        let _ = cur_entry.replace(Child::PageTable(pt));
+                        self.0.push_level(lock);
                     }
-                    Child::Page(_, _) => {
+                    ChildRef::Page(_, _) => {
                         panic!("Mapping a smaller page in an already mapped huge page");
                     }
-                    Child::Untracked(_, _, _) => {
+                    ChildRef::Untracked(_, _, _) => {
                         let split_child = cur_entry.split_if_untracked_huge().unwrap();
                         self.0.push_level(split_child);
                     }
-                    Child::Token(_) => {
+                    ChildRef::Token(_) => {
                         let split_child = cur_entry.split_if_huge_token().unwrap();
                         self.0.push_level(split_child);
                     }
@@ -633,23 +639,25 @@ where
                     MapTrackingStatus::Untracked
                 };
                 let cur_entry = self.0.cur_entry();
-                match cur_entry.to_owned() {
-                    Child::PageTable(pt) => {
-                        self.0.push_level(pt.lock());
+                match cur_entry.borrow() {
+                    ChildRef::PageTable(pt) => {
+                        let lock = unsafe { pt.deref().lock() };
+                        self.0.push_level(lock);
                     }
-                    Child::None => {
+                    ChildRef::None => {
                         let pt =
-                            PageTableNode::<E, C>::alloc(cur_level - 1, should_track_if_created);
-                        let _ = cur_entry.replace(Child::PageTable(pt.clone_raw()));
-                        self.0.push_level(pt);
+                            RawPageTableNode::<E, C>::alloc(cur_level - 1, should_track_if_created);
+                        let lock = unsafe { pt.lock() };
+                        let _ = cur_entry.replace(Child::PageTable(pt));
+                        self.0.push_level(lock);
                     }
-                    Child::Page(_, _) => {
+                    ChildRef::Page(_, _) => {
                         panic!("Marking a smaller page in an already mapped huge page");
                     }
-                    Child::Untracked(_, _, _) => {
+                    ChildRef::Untracked(_, _, _) => {
                         panic!("Marking an already untracked mapped page");
                     }
-                    Child::Token(_) => {
+                    ChildRef::Token(_) => {
                         let split_child = cur_entry.split_if_huge_token().unwrap();
                         self.0.push_level(split_child);
                     }
@@ -658,16 +666,17 @@ where
             }
 
             let cur_entry = self.0.cur_entry();
-            match cur_entry.to_owned() {
-                Child::PageTable(pt) => {
-                    self.0.push_level(pt.lock());
+            match cur_entry.borrow() {
+                ChildRef::PageTable(pt) => {
+                    let lock = unsafe { pt.deref().lock() };
+                    self.0.push_level(lock);
                     continue;
                 }
-                Child::None | Child::Token(_) => {} // Ok to proceed.
-                Child::Page(_, _) => {
+                ChildRef::None | ChildRef::Token(_) => {} // Ok to proceed.
+                ChildRef::Page(_, _) => {
                     panic!("Marking an already mapped huge page");
                 }
-                Child::Untracked(_, _, _) => {
+                ChildRef::Untracked(_, _, _) => {
                     panic!("Marking an already untracked mapped huge page");
                 }
             }
@@ -727,10 +736,10 @@ where
 
             // Go down if not applicable.
             if cur_va % page_size::<C>(cur_level) != 0 || cur_va + page_size::<C>(cur_level) > end {
-                let child = cur_entry.to_owned();
+                let child = cur_entry.borrow();
                 match child {
-                    Child::PageTable(pt) => {
-                        let pt = pt.lock();
+                    ChildRef::PageTable(pt) => {
+                        let pt = pt.deref().lock();
                         // If there's no mapped PTEs in the next level, we can
                         // skip to save time.
                         if pt.nr_children() != 0 {
@@ -743,17 +752,17 @@ where
                             self.0.move_forward();
                         }
                     }
-                    Child::None => {
+                    ChildRef::None => {
                         unreachable!("Already checked");
                     }
-                    Child::Page(_, _) => {
+                    ChildRef::Page(_, _) => {
                         panic!("Removing part of a huge page");
                     }
-                    Child::Untracked(_, _, _) => {
+                    ChildRef::Untracked(_, _, _) => {
                         let split_child = cur_entry.split_if_untracked_huge().unwrap();
                         self.0.push_level(split_child);
                     }
-                    Child::Token(_) => {
+                    ChildRef::Token(_) => {
                         let split_child = cur_entry.split_if_huge_token().unwrap();
                         self.0.push_level(split_child);
                     }
@@ -845,10 +854,10 @@ where
 
             // Go down if it's not a last entry.
             if cur_entry.is_node() {
-                let Child::PageTable(pt) = cur_entry.to_owned() else {
+                let ChildRef::PageTable(pt) = cur_entry.borrow() else {
                     unreachable!("Already checked");
                 };
-                let pt = pt.lock();
+                let pt = pt.deref().lock();
                 // If there's no mapped PTEs in the next level, we can
                 // skip to save time.
                 if pt.nr_children() != 0 {
@@ -933,9 +942,9 @@ where
             let src_level = src.0.level;
             let mut src_entry = src.0.cur_entry();
 
-            match src_entry.to_owned() {
-                Child::PageTable(pt) => {
-                    let pt = pt.lock();
+            match src_entry.borrow() {
+                ChildRef::PageTable(pt) => {
+                    let pt = pt.deref().lock();
                     // If there's no mapped PTEs in the next level, we can
                     // skip to save time.
                     if pt.nr_children() != 0 {
@@ -945,15 +954,16 @@ where
                     }
                     continue;
                 }
-                Child::None => {
+                ChildRef::None => {
                     src.0.move_forward();
                     continue;
                 }
-                Child::Untracked(_, _, _) => {
+                ChildRef::Untracked(_, _, _) => {
                     panic!("Copying untracked mappings");
                 }
-                Child::Page(page, mut prop) => {
+                ChildRef::Page(page, mut prop) => {
                     let mapped_page_size = page.size();
+                    let page = page.clone();
 
                     // Do protection.
                     src_entry.protect(prot_op, token_op);
@@ -969,7 +979,7 @@ where
                     debug_assert_eq!(mapped_page_size, page_size::<C>(src.0.level));
                     src.0.move_forward();
                 }
-                Child::Token(mut token) => {
+                ChildRef::Token(mut token) => {
                     // Do protection.
                     src_entry.protect(prot_op, token_op);
 
