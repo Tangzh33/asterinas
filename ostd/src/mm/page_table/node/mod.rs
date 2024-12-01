@@ -317,12 +317,6 @@ where
         unsafe { RawNodeRef::from_raw_parts(self.page.paddr(), self.page.meta().level) }
     }
 
-    /// Gets the number of valid PTEs in the node.
-    pub(super) fn nr_children(&self) -> u16 {
-        // SAFETY: The lock is held so we have an exclusive access.
-        unsafe { *self.page.meta().nr_children.get() }
-    }
-
     /// Reads a non-owning PTE at the given index.
     ///
     /// A non-owning PTE means that it does not account for a reference count
@@ -358,12 +352,6 @@ where
         // SAFETY: The index is within the bound and the PTE is plain-old-data.
         unsafe { ptr.add(idx).write(pte) }
     }
-
-    /// Gets the mutable reference to the number of valid PTEs in the node.
-    fn nr_children_mut(&mut self) -> &mut u16 {
-        // SAFETY: The lock is held so we have an exclusive access.
-        unsafe { &mut *self.page.meta().nr_children.get() }
-    }
 }
 
 impl<E: PageTableEntryTrait, C: PagingConstsTrait> Drop for PageTableNode<E, C>
@@ -389,13 +377,6 @@ where
     const USAGE: PageUsage = PageUsage::PageTable;
 
     fn on_drop(page: &mut Page<Self>) {
-        // SAFETY: This is the last reference so we have an exclusive access.
-        let nr_children = unsafe { *page.meta().nr_children.get() };
-
-        if nr_children == 0 {
-            return;
-        }
-
         let paddr = page.paddr();
         let level = page.meta().level;
         let is_tracked = page.meta().is_tracked;

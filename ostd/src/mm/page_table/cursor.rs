@@ -740,17 +740,7 @@ where
                 match child {
                     ChildRef::PageTable(pt) => {
                         let pt = pt.deref().lock();
-                        // If there's no mapped PTEs in the next level, we can
-                        // skip to save time.
-                        if pt.nr_children() != 0 {
-                            self.0.push_level(pt);
-                        } else {
-                            if self.0.va + page_size::<C>(self.0.level) > end {
-                                self.0.va = end;
-                                break;
-                            }
-                            self.0.move_forward();
-                        }
+                        self.0.push_level(pt);
                     }
                     ChildRef::None => {
                         unreachable!("Already checked");
@@ -858,13 +848,7 @@ where
                     unreachable!("Already checked");
                 };
                 let pt = pt.deref().lock();
-                // If there's no mapped PTEs in the next level, we can
-                // skip to save time.
-                if pt.nr_children() != 0 {
-                    self.0.push_level(pt);
-                } else {
-                    self.0.move_forward();
-                }
+                self.0.push_level(pt);
                 continue;
             }
 
@@ -945,13 +929,7 @@ where
             match src_entry.borrow() {
                 ChildRef::PageTable(pt) => {
                     let pt = pt.deref().lock();
-                    // If there's no mapped PTEs in the next level, we can
-                    // skip to save time.
-                    if pt.nr_children() != 0 {
-                        src.0.push_level(pt);
-                    } else {
-                        src.0.move_forward();
-                    }
+                    src.0.push_level(pt);
                     continue;
                 }
                 ChildRef::None => {

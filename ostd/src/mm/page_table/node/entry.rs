@@ -118,12 +118,6 @@ where
         let old_child =
             unsafe { ChildRef::from_pte(&self.pte, self.node.level(), self.node.is_tracked()) };
 
-        if old_child.is_none() && !new_child.is_none() {
-            *self.node.nr_children_mut() += 1;
-        } else if !old_child.is_none() && new_child.is_none() {
-            *self.node.nr_children_mut() -= 1;
-        }
-
         // SAFETY:
         //  1. The index is within the bounds.
         //  2. The new PTE is compatible with the page table node, as asserted above.

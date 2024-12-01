@@ -55,11 +55,6 @@ impl<E: PageTableEntryTrait, C: PagingConstsTrait> ChildRef<'_, E, C>
 where
     [(); C::NR_LEVELS as usize]:,
 {
-    /// Returns whether the child does not map to anything.
-    pub(in crate::mm) fn is_none(&self) -> bool {
-        matches!(self, ChildRef::None)
-    }
-
     /// Converts a PTE back to a child.
     ///
     /// # Safety
@@ -137,11 +132,6 @@ impl<E: PageTableEntryTrait, C: PagingConstsTrait> Child<E, C>
 where
     [(); C::NR_LEVELS as usize]:,
 {
-    /// Returns whether the child does not map to anything.
-    pub(in crate::mm) fn is_none(&self) -> bool {
-        matches!(self, Child::None)
-    }
-
     /// Returns whether the child is compatible with the given node.
     ///
     /// In other words, it checks whether the child can be a child of a node
