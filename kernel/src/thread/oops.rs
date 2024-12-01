@@ -22,7 +22,12 @@ use core::{
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
-use ostd::{cpu::PinCurrentCpu, panic, task::disable_preempt};
+use ostd::{
+    cpu::PinCurrentCpu,
+    panic,
+    sync::{LocalIrqDisabled, SpinLock},
+    task::disable_preempt,
+};
 
 use super::Thread;
 
@@ -81,6 +86,9 @@ static OOPS_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 #[ostd::panic_handler]
 fn panic_handler(info: &core::panic::PanicInfo) -> ! {
+    static GLOBAL_PANIC_LOCK: SpinLock<(), LocalIrqDisabled> = SpinLock::new(());
+    let _guard = GLOBAL_PANIC_LOCK.lock();
+
     let message = info.message();
 
     if let Some(thread) = Thread::current() {

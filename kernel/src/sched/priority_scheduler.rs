@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use ostd::{
     cpu::{num_cpus, CpuId, CpuSet, PinCurrentCpu},
@@ -58,27 +58,33 @@ impl<T: PreemptSchedInfo + FromTask<U>, U: CommonSchedInfo> PreemptScheduler<T, 
         // If the CPU of a runnable task has been set before, keep scheduling
         // the task to that one.
         // TODO: Consider migrating tasks between CPUs for load balancing.
-        if let Some(cpu_id) = entity.task.cpu().get() {
-            return cpu_id;
-        }
 
-        let irq_guard = disable_local();
-        let mut selected = irq_guard.current_cpu();
-        let mut minimum_load = usize::MAX;
-
-        for candidate in entity.thread.cpu_affinity().iter() {
-            let rq = self.rq[candidate.as_usize()].lock();
-            // A wild guess measuring the load of a runqueue. We assume that
-            // real-time tasks are 4-times as important as normal tasks.
-            let load = rq.real_time_entities.len() * 8
-                + rq.normal_entities.len() * 2
-                + rq.lowest_entities.len();
-            if load < minimum_load {
-                selected = candidate;
-                minimum_load = load;
+        let last_cpu_selection = entity.last_cpu_selection.load(Ordering::Relaxed);
+        if last_cpu_selection != usize::MAX {
+            let cpu_id = CpuId::try_from(last_cpu_selection).unwrap();
+            if entity.thread.cpu_affinity().contains(cpu_id) {
+                return cpu_id;
             }
         }
 
+        let mut selected = None;
+
+        static LAST: AtomicUsize = AtomicUsize::new(0);
+        let count = entity.thread.cpu_affinity().count();
+        let mut last = LAST.fetch_add(1, Ordering::Relaxed) % count;
+
+        for candidate in entity.thread.cpu_affinity().iter() {
+            selected = Some(candidate);
+            if last == 0 {
+                break;
+            }
+            last -= 1;
+        }
+
+        let selected = selected.unwrap();
+        entity
+            .last_cpu_selection
+            .store(selected.as_usize(), Ordering::Relaxed);
         selected
     }
 }
@@ -244,6 +250,7 @@ struct PreemptSchedEntity<T: PreemptSchedInfo + FromTask<U>, U: CommonSchedInfo>
     task: Arc<U>,
     thread: Arc<T>,
     time_slice: TimeSlice,
+    last_cpu_selection: AtomicUsize,
 }
 
 impl<T: PreemptSchedInfo + FromTask<U>, U: CommonSchedInfo> PreemptSchedEntity<T, U> {
@@ -254,6 +261,7 @@ impl<T: PreemptSchedInfo + FromTask<U>, U: CommonSchedInfo> PreemptSchedEntity<T
             task,
             thread,
             time_slice,
+            last_cpu_selection: AtomicUsize::new(usize::MAX),
         }
     }
 
@@ -268,6 +276,7 @@ impl<T: PreemptSchedInfo + FromTask<U>, U: CommonSchedInfo> Clone for PreemptSch
             task: self.task.clone(),
             thread: self.thread.clone(),
             time_slice: self.time_slice,
+            last_cpu_selection: AtomicUsize::new(usize::MAX),
         }
     }
 }

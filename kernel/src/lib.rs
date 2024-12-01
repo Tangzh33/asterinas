@@ -34,7 +34,7 @@ use core::sync::atomic::Ordering;
 use ostd::{
     arch::qemu::{exit_qemu, QemuExitCode},
     boot,
-    cpu::PinCurrentCpu,
+    cpu::{CpuId, CpuSet, PinCurrentCpu},
 };
 use process::Process;
 use sched::priority::PriorityRange;
@@ -85,8 +85,11 @@ pub fn main() {
     ostd::boot::smp::register_ap_entry(ap_init);
 
     // Spawn the first kernel thread on BSP.
+    let mut affinity = CpuSet::new_empty();
+    affinity.add(CpuId::bsp());
     ThreadOptions::new(init_thread)
         .priority(Priority::new(PriorityRange::new(PriorityRange::MAX)))
+        .cpu_affinity(affinity)
         .spawn();
 }
 

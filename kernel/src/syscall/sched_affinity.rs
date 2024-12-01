@@ -5,7 +5,11 @@ use core::{cmp, mem};
 use ostd::cpu::{num_cpus, CpuId, CpuSet};
 
 use super::SyscallReturn;
-use crate::{prelude::*, process::posix_thread::thread_table, thread::Tid};
+use crate::{
+    prelude::*,
+    process::posix_thread::thread_table,
+    thread::{Thread, Tid},
+};
 
 pub fn sys_sched_getaffinity(
     tid: Tid,
@@ -39,7 +43,10 @@ pub fn sys_sched_setaffinity(
     let user_cpu_set = read_cpu_set_from(ctx.user_space(), cpuset_size, cpu_set_ptr)?;
 
     match tid {
-        0 => ctx.thread.atomic_cpu_affinity().store(&user_cpu_set),
+        0 => {
+            ctx.thread.atomic_cpu_affinity().store(&user_cpu_set);
+            Thread::yield_now();
+        }
         _ => match thread_table::get_thread(tid) {
             Some(thread) => {
                 thread.atomic_cpu_affinity().store(&user_cpu_set);
