@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use core::{cmp, mem};
+use core::{cmp, mem, sync::atomic::Ordering};
 
 use ostd::cpu::{num_cpus, CpuId, CpuSet};
 
@@ -18,9 +18,9 @@ pub fn sys_sched_getaffinity(
     ctx: &Context,
 ) -> Result<SyscallReturn> {
     let cpu_set = match tid {
-        0 => ctx.thread.atomic_cpu_affinity().load(),
+        0 => ctx.thread.atomic_cpu_affinity().load(Ordering::Relaxed),
         _ => match thread_table::get_thread(tid) {
-            Some(thread) => thread.atomic_cpu_affinity().load(),
+            Some(thread) => thread.atomic_cpu_affinity().load(Ordering::Relaxed),
             None => return Err(Error::with_message(Errno::ESRCH, "thread does not exist")),
         },
     };
@@ -44,12 +44,16 @@ pub fn sys_sched_setaffinity(
 
     match tid {
         0 => {
-            ctx.thread.atomic_cpu_affinity().store(&user_cpu_set);
+            ctx.thread
+                .atomic_cpu_affinity()
+                .store(&user_cpu_set, Ordering::Relaxed);
             Thread::yield_now();
         }
         _ => match thread_table::get_thread(tid) {
             Some(thread) => {
-                thread.atomic_cpu_affinity().store(&user_cpu_set);
+                thread
+                    .atomic_cpu_affinity()
+                    .store(&user_cpu_set, Ordering::Relaxed);
             }
             None => return Err(Error::with_message(Errno::ESRCH, "thread does not exist")),
         },

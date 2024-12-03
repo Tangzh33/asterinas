@@ -4,6 +4,8 @@
 
 use alloc::vec::Vec;
 use core::{
+    cell::UnsafeCell,
+    mem::MaybeUninit,
     ops::Range,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
@@ -57,6 +59,7 @@ impl<'c> TlbFlusher<'c> {
 
         if op == TlbFlushOp::All || self.flush_ops_size >= FLUSH_ALL_OPS_THRESHOLD {
             self.need_flush_all = true;
+            self.flush_ops_size = 0;
         } else {
             self.flush_ops[self.flush_ops_size] = Some(op);
             self.flush_ops_size += 1;
@@ -82,7 +85,7 @@ impl<'c> TlbFlusher<'c> {
     }
 
     fn dispatch_tlb_flush(&mut self) -> CpuSet {
-        let mut target_cpus = self.target_cpus.load();
+        let mut target_cpus = self.target_cpus.load(Ordering::Acquire);
         let this_cpu = self.irq_guard.current_cpu();
 
         let need_self_flush = target_cpus.contains(this_cpu);
@@ -109,12 +112,51 @@ impl<'c> TlbFlusher<'c> {
         }
 
         if need_remote_flush {
+            if self.need_flush_all
+                || self.flush_ops_size
+                    + INCOHERENT_ADDRS
+                        .get_on_cpu(this_cpu)
+                        .size
+                        .load(Ordering::Relaxed)
+                    > FLUSH_ALL_OPS_THRESHOLD
+            {
+                INCOHERENT_ADDRS
+                    .get_on_cpu(this_cpu)
+                    .flush_all_set
+                    .add_set(&target_cpus, Ordering::Release);
+            } else {
+                let ops_array = INCOHERENT_ADDRS.get_on_cpu(this_cpu);
+                let mut ops_array_size = 0;
+                for i in 0..FLUSH_ALL_OPS_THRESHOLD {
+                    if ops_array.entries[i].1.load(Ordering::Acquire).is_empty() {
+                        if self.flush_ops_size == 0 {
+                            continue;
+                        }
+                        // SAFETY: There would be no concurrent access to the same
+                        // entry as the set is empty.
+                        self.flush_ops_size -= 1;
+                        unsafe {
+                            (*(ops_array.entries[i].0.get()))
+                                .write(self.flush_ops[self.flush_ops_size].clone().unwrap());
+                        }
+                        ops_array.entries[i]
+                            .1
+                            .store(&target_cpus, Ordering::Release);
+                    }
+                    ops_array_size += 1;
+                }
+                debug_assert!(self.flush_ops_size == 0);
+                ops_array.size.store(ops_array_size, Ordering::Release);
+            }
+
             let mut inner = LATR_FLUSH_ARRAY.get_on_cpu(this_cpu).entries.write();
             inner.reserve(self.defer_pages.len().max(64));
             for (op, page) in self.defer_pages.drain(..) {
                 inner.push((page, op, AtomicCpuSet::new(target_cpus.clone())));
             }
         }
+
+        self.need_flush_all = false;
 
         target_cpus
     }
@@ -176,59 +218,13 @@ const FLUSH_ALL_OPS_THRESHOLD: usize = 32;
 // On scheduler ticks or some timer interrupts, we will process the pending
 // requests on all CPUs and recycle the pages on the current CPU.
 cpu_local! {
+    static INCOHERENT_ADDRS: OpsArray = OpsArray::new();
     static LATR_FLUSH_ARRAY: LatrArray = LatrArray::new();
-}
-
-/// Recycle the local pages that is delayed to be recycled.
-///
-/// This function checks if all the issued TLB flush requests of local pages
-/// are processed on all the relevant CPUs. If so, the page can be recycled.
-pub(crate) fn delayed_recycle_pages(irq_guard: &DisabledLocalIrqGuard) {
-    let cur_cpu = irq_guard.current_cpu();
-    LATR_FLUSH_ARRAY.get_on_cpu(cur_cpu).recycle();
 }
 
 cpu_local! {
     // TLB_SYNC_ACK[TO][FROM]
     static TLB_SYNC_ACK: AtomicCpuSet = AtomicCpuSet::new(CpuSet::new_empty());
-}
-
-/// Process the pending TLB flush requests on all the CPUs.
-///
-/// This function checks if there are any pending TLB flush requests on all the
-/// remote CPUS. If so, it will process the requests.
-pub(crate) fn process_pending_sync_shootdowns(irq_guard: &DisabledLocalIrqGuard) {
-    let cur_cpu = irq_guard.current_cpu();
-    let mut have_flushed_all = false;
-    core::sync::atomic::fence(Ordering::Acquire);
-    let need_check_cpus = TLB_SYNC_ACK.get_on_cpu(cur_cpu).load();
-    for cpu_id in need_check_cpus.iter() {
-        if cpu_id == cur_cpu {
-            continue;
-        }
-        if !have_flushed_all {
-            TlbFlushOp::All.perform_on_current();
-            have_flushed_all = true;
-        }
-        TLB_SYNC_ACK
-            .get_on_cpu(cur_cpu)
-            .remove(cpu_id, Ordering::Release);
-    }
-}
-
-fn process_sync_request(from_cpu: CpuId) {
-    let irq_guard = trap::disable_local();
-    let cur_cpu = irq_guard.current_cpu();
-    if !TLB_SYNC_ACK
-        .get_on_cpu(cur_cpu)
-        .contains(from_cpu, Ordering::Acquire)
-    {
-        return;
-    }
-    TlbFlushOp::All.perform_on_current();
-    TLB_SYNC_ACK
-        .get_on_cpu(cur_cpu)
-        .remove(from_cpu, Ordering::Release);
 }
 
 pub(crate) const PROCESS_PENDING_INTERVAL: usize = 10;
@@ -256,6 +252,45 @@ fn sync_tlb_with(irq_guard: &DisabledLocalIrqGuard, cpu_set: CpuSet) {
             core::hint::spin_loop();
         }
     }
+}
+
+/// Process the pending TLB flush requests on all the CPUs.
+///
+/// This function checks if there are any pending TLB flush requests on all the
+/// remote CPUS. If so, it will process the requests.
+pub(crate) fn process_pending_sync_shootdowns(irq_guard: &DisabledLocalIrqGuard) {
+    let cur_cpu = irq_guard.current_cpu();
+    let mut have_flushed_all = false;
+    let need_check_cpus = TLB_SYNC_ACK.get_on_cpu(cur_cpu).load(Ordering::Acquire);
+    for cpu_id in need_check_cpus.iter() {
+        if cpu_id == cur_cpu {
+            continue;
+        }
+        INCOHERENT_ADDRS
+            .get_on_cpu(cpu_id)
+            .process_remote_requests(&mut have_flushed_all, cur_cpu);
+        TLB_SYNC_ACK
+            .get_on_cpu(cur_cpu)
+            .remove(cpu_id, Ordering::Release);
+    }
+}
+
+fn process_sync_request(from_cpu: CpuId) {
+    let irq_guard = trap::disable_local();
+    let cur_cpu = irq_guard.current_cpu();
+    if !TLB_SYNC_ACK
+        .get_on_cpu(cur_cpu)
+        .contains(from_cpu, Ordering::Acquire)
+    {
+        return;
+    }
+    let mut have_flushed_all = false;
+    INCOHERENT_ADDRS
+        .get_on_cpu(from_cpu)
+        .process_remote_requests(&mut have_flushed_all, cur_cpu);
+    TLB_SYNC_ACK
+        .get_on_cpu(cur_cpu)
+        .remove(from_cpu, Ordering::Release);
 }
 
 pub(crate) fn this_cpu_init_garbage_collection() {
@@ -302,12 +337,86 @@ fn process_pending_shootdowns(irq_guard: &DisabledLocalIrqGuard) {
         if from_cpu == cur_cpu {
             continue;
         }
+        INCOHERENT_ADDRS
+            .get_on_cpu(from_cpu)
+            .process_remote_requests(&mut have_flushed_all, cur_cpu);
         LATR_FLUSH_ARRAY
             .get_on_cpu(from_cpu)
             .process_remote_requests(&mut have_flushed_all, cur_cpu);
     }
-    TLB_SYNC_ACK.get_on_cpu(cur_cpu).store(&CpuSet::new_empty());
-    core::sync::atomic::fence(Ordering::Release);
+    TLB_SYNC_ACK
+        .get_on_cpu(cur_cpu)
+        .store(&CpuSet::new_empty(), Ordering::Release);
+}
+
+fn delayed_recycle_pages(irq_guard: &DisabledLocalIrqGuard) {
+    let cur_cpu = irq_guard.current_cpu();
+    INCOHERENT_ADDRS.get_on_cpu(cur_cpu).recycle();
+    LATR_FLUSH_ARRAY.get_on_cpu(cur_cpu).recycle();
+}
+
+struct OpsArray {
+    entries: [(UnsafeCell<MaybeUninit<TlbFlushOp>>, AtomicCpuSet); FLUSH_ALL_OPS_THRESHOLD],
+    size: AtomicUsize,
+    flush_all_set: AtomicCpuSet,
+}
+
+unsafe impl Sync for OpsArray {}
+
+impl OpsArray {
+    const fn new() -> Self {
+        Self {
+            entries: [const {
+                (
+                    UnsafeCell::new(MaybeUninit::uninit()),
+                    AtomicCpuSet::new(CpuSet::new_empty()),
+                )
+            }; FLUSH_ALL_OPS_THRESHOLD],
+            size: AtomicUsize::new(0),
+            flush_all_set: AtomicCpuSet::new(CpuSet::new_empty()),
+        }
+    }
+
+    fn recycle(&self) {
+        if self.size.load(Ordering::Relaxed) == 0 {
+            return;
+        }
+        let mut size = 0;
+        for i in 0..FLUSH_ALL_OPS_THRESHOLD {
+            let (_op, set) = &self.entries[i];
+            if set.load(Ordering::Acquire).is_empty() {
+                size += 1;
+            }
+        }
+        self.size.store(size, Ordering::Relaxed);
+    }
+
+    fn process_remote_requests(&self, have_flushed_all: &mut bool, current: CpuId) {
+        let need_flush_all = self.flush_all_set.contains(current, Ordering::Acquire);
+        if !*have_flushed_all
+            && (need_flush_all || self.size.load(Ordering::Relaxed) > FLUSH_ALL_OPS_THRESHOLD)
+        {
+            TlbFlushOp::All.perform_on_current();
+            *have_flushed_all = true;
+        }
+        if *have_flushed_all && need_flush_all {
+            self.flush_all_set.remove(current, Ordering::Release);
+        }
+        for i in 0..FLUSH_ALL_OPS_THRESHOLD {
+            let (op, set) = &self.entries[i];
+            if set.contains(current, Ordering::Acquire) {
+                if !*have_flushed_all {
+                    // SAFETY: the pointer is valid if the set contains any CPUs.
+                    let op = unsafe { (*op.get()).assume_init_ref() };
+                    op.perform_on_current();
+                    if *op == TlbFlushOp::All {
+                        *have_flushed_all = true;
+                    }
+                }
+                set.remove(current, Ordering::Release);
+            }
+        }
+    }
 }
 
 struct LatrArray {
@@ -326,7 +435,7 @@ impl LatrArray {
     /// This should be called by the current CPU.
     fn recycle(&self) {
         let mut lock = self.entries.write();
-        lock.retain(|x| x.2.load().is_empty());
+        lock.retain(|x| x.2.load(Ordering::Acquire).is_empty());
     }
 
     /// Check the remote CPU's requests and process them.

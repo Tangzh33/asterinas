@@ -165,20 +165,22 @@ impl AtomicCpuSet {
 
     /// Loads the value of the set.
     ///
-    /// This operation can only be done in the [`Ordering::Relaxed`] memory
-    /// order. It cannot be used to synchronize anything between CPUs.
-    pub fn load(&self) -> CpuSet {
-        let bits = core::array::from_fn(|i| self.bits[i].load(Ordering::Relaxed));
+    /// This operation can be viewed as a collection of [`Self::contains`]
+    /// operations. All of them are done separately and follow the specified
+    /// ordering. This operation is not atomic.
+    pub fn load(&self, ordering: Ordering) -> CpuSet {
+        let bits = core::array::from_fn(|i| self.bits[i].load(ordering));
         CpuSet { bits }
     }
 
     /// Stores a new value to the set.
     ///
-    /// This operation can only be done in the [`Ordering::Relaxed`] memory
-    /// order. It cannot be used to synchronize anything between CPUs.
-    pub fn store(&self, value: &CpuSet) {
+    /// This operation can be viewed as a collection of [`Self::add`] and
+    /// [`Self::remove`] operations. All of them are done separately and
+    /// follow the specified ordering. This operation is not atomic.
+    pub fn store(&self, value: &CpuSet, ordering: Ordering) {
         for (part, new_part) in self.bits.iter().zip(value.bits.iter()) {
-            part.store(*new_part, Ordering::Relaxed);
+            part.store(*new_part, ordering);
         }
     }
 
@@ -191,10 +193,14 @@ impl AtomicCpuSet {
         }
     }
 
-    /// Atomically adds a set of CPUs with the relaxed ordering.
-    pub fn add_set(&self, set: &CpuSet) {
+    /// Atomically adds a set of CPUs.
+    ///
+    /// This operation can be viewed as a collection of [`Self::add`]
+    /// operations. All of them are done separately and follow the specified
+    /// ordering. This operation is not atomic.
+    pub fn add_set(&self, set: &CpuSet, ordering: Ordering) {
         for (part, new_part) in self.bits.iter().zip(set.bits.iter()) {
-            part.fetch_or(*new_part, Ordering::Relaxed);
+            part.fetch_or(*new_part, ordering);
         }
     }
 

@@ -315,7 +315,7 @@ impl PreemptSchedInfo for Thread {
     }
 
     fn cpu_affinity(&self) -> CpuSet {
-        self.atomic_cpu_affinity().load()
+        self.atomic_cpu_affinity().load(Ordering::Relaxed)
     }
 }
 
