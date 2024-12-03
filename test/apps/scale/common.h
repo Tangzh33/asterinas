@@ -98,7 +98,7 @@ void run_test_specify_threads(int num_threads, void *(*worker_thread)(void *),
 	printf("Threads, p5 lat (ns), Avg lat (ns), p95 lat (ns), Pos err lat (ns2), Neg err lat (ns2)\n");
 
 	if (num_threads == -1) {
-		int threads[] = { 1, 16, 32, 48, 64, 80, 96, 112 };
+		int threads[] = { 1, 16, 32, 48, 64, 80, 96, 112, 128 };
 		for (int i = 0; i < sizeof(threads) / sizeof(int); i++) {
 			run_test_specify_rounds(threads[i], worker_thread,
 						config);
