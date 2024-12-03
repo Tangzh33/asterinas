@@ -43,6 +43,8 @@ else
     NETDEV_ARGS="-nic none"
 fi
 
+QMP_PORT=9889
+
 COMMON_QEMU_ARGS="\
     -cpu Icelake-Server,+x2apic \
     -smp ${SMP:-1} \
@@ -59,6 +61,7 @@ COMMON_QEMU_ARGS="\
     -drive if=none,format=raw,id=x0,file=./test/build/ext2.img \
     -drive if=none,format=raw,id=x1,file=./test/build/exfat.img \
     -drive if=none,format=raw,id=x2,file=./test/build/metis.img \
+    -qmp tcp:127.0.0.1:$QMP_PORT,server,nowait \
 "
 
 if [ "$1" = "iommu" ]; then
