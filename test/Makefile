@@ -167,11 +167,13 @@ $(EXFAT_IMAGE):
 	@mkfs.exfat $(EXFAT_IMAGE)
 
 $(METIS_IMAGE):
-	@dd if=/dev/zero of=$(METIS_IMAGE) bs=2G count=15 iflag=fullblock
+	@dd if=/dev/zero of=$(METIS_IMAGE) bs=2G count=3 iflag=fullblock
 	@mkfs.ext2 $(METIS_IMAGE)
 	@mkdir -p /mnt/metis_mount
 	@mount -t ext2 $(METIS_IMAGE) /mnt/metis_mount
-	@cp -r /root/tz_utils/jinix_benchmark/mosbench/metis/data/* /mnt/metis_mount/
+	@mkdir -p /mnt/metis_mount/wr
+	@cp /root/tz_utils/jinix_benchmark/mosbench/metis/data/wr/800MB.txt /mnt/metis_mount/wr
+	@cp -r /root/tz_utils/jinix_benchmark/mosbench/psearchy/data/linux-2.6.35 /mnt/metis_mount
 	@umount /mnt/metis_mount
 	@rm -rf /mnt/metis_mount/
 
