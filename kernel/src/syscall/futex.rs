@@ -42,7 +42,7 @@ pub fn sys_futex(
         Ok(val as usize)
     };
 
-    let get_futex_timeout = |timeout_addr: Vaddr| -> Result<Option<ManagedTimeout<'static>>> {
+    /* let get_futex_timeout = |timeout_addr: Vaddr| -> Result<Option<ManagedTimeout<'static>>> {
         if timeout_addr == 0 {
             return Ok(None);
         }
@@ -90,12 +90,12 @@ pub fn sys_futex(
         Some(ctx.process.pid())
     } else {
         None
-    };
+    }; */
     let res = match futex_op {
         FutexOp::FUTEX_WAIT => {
             // let timeout = get_futex_timeout(utime_addr)?;
             /* futex_wait(futex_addr as _, futex_val as _, timeout, ctx, pid).map(|_| 0) */
-            crate::Thread::yield_now();
+            // crate::Thread::yield_now();
             Ok(0)
         }
         FutexOp::FUTEX_WAIT_BITSET => {
@@ -109,7 +109,7 @@ pub fn sys_futex(
                 pid,
             )
             .map(|_| 0) */
-            crate::Thread::yield_now();
+            // crate::Thread::yield_now();
             Ok(0)
         }
         FutexOp::FUTEX_WAKE => {

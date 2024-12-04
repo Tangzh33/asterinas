@@ -129,7 +129,7 @@ pub(crate) unsafe fn init_on_ap() {
 
 pub(crate) fn interrupts_ack(irq_number: usize) {
     if !cpu::CpuException::is_cpu_exception(irq_number as u16) {
-        kernel::pic::ack();
+        // kernel::pic::ack();
         kernel::apic::with_borrow(|apic| {
             apic.eoi();
         });

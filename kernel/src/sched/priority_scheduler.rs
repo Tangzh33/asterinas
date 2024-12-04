@@ -4,6 +4,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use ostd::{
     cpu::{num_cpus, CpuId, CpuSet, PinCurrentCpu},
+    cpu_local,
     task::{
         disable_preempt,
         scheduler::{
@@ -44,6 +45,10 @@ struct PreemptScheduler<T: PreemptSchedInfo + FromTask<U>, U: CommonSchedInfo> {
     rq: Vec<SpinLock<PreemptRunQueue<T, U>>>,
 }
 
+cpu_local! {
+    static LOAD: AtomicUsize = AtomicUsize::new(0);
+}
+
 impl<T: PreemptSchedInfo + FromTask<U>, U: CommonSchedInfo> PreemptScheduler<T, U> {
     fn new(nr_cpus: usize) -> Self {
         let mut rq = Vec::with_capacity(nr_cpus);
@@ -69,16 +74,14 @@ impl<T: PreemptSchedInfo + FromTask<U>, U: CommonSchedInfo> PreemptScheduler<T, 
 
         let mut selected = None;
 
-        static LAST: AtomicUsize = AtomicUsize::new(0);
-        let count = entity.thread.cpu_affinity().count();
-        let mut last = LAST.fetch_add(1, Ordering::Relaxed) % count;
+        let mut min_load = usize::MAX;
 
         for candidate in entity.thread.cpu_affinity().iter() {
-            selected = Some(candidate);
-            if last == 0 {
-                break;
+            let load = LOAD.get_on_cpu(candidate).load(Ordering::Relaxed);
+            if load < min_load {
+                min_load = load;
+                selected = Some(candidate);
             }
-            last -= 1;
         }
 
         let selected = selected.unwrap();
@@ -115,10 +118,13 @@ impl<T: Sync + Send + PreemptSchedInfo + FromTask<U>, U: Sync + Send + CommonSch
 
         if entity.thread.is_real_time() {
             rq.real_time_entities.push_back(entity);
+            LOAD.get_on_cpu(target_cpu).fetch_add(8, Ordering::Relaxed);
         } else if entity.thread.is_lowest() {
             rq.lowest_entities.push_back(entity);
+            LOAD.get_on_cpu(target_cpu).fetch_add(1, Ordering::Relaxed);
         } else {
             rq.normal_entities.push_back(entity);
+            LOAD.get_on_cpu(target_cpu).fetch_add(4, Ordering::Relaxed);
         }
 
         // Preempt the current task, but only if the newly queued task has a strictly higher
@@ -240,6 +246,15 @@ impl<T: PreemptSchedInfo + FromTask<U>, U: CommonSchedInfo> LocalRunQueue<U>
     fn dequeue_current(&mut self) -> Option<Arc<U>> {
         self.current.take().map(|entity| {
             let runnable = entity.task;
+            let prio = if entity.thread.is_real_time() {
+                8
+            } else if entity.thread.is_lowest() {
+                1
+            } else {
+                4
+            };
+            LOAD.get_on_cpu(runnable.cpu().get().unwrap())
+                .fetch_sub(prio, Ordering::Relaxed);
             runnable.cpu().set_to_none();
 
             runnable

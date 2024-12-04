@@ -42,9 +42,9 @@ pub fn with_borrow<R>(f: impl FnOnce(&(dyn Apic + 'static)) -> R) -> R {
         static IS_INITIALIZED: AtomicBool = AtomicBool::new(false);
     }
 
-    let preempt_guard = crate::task::disable_preempt();
+    // let preempt_guard = crate::task::disable_preempt();
 
-    // SAFETY: Preemption is disabled, so we can safely access the CPU-local variable.
+    // SAFETY: IRQs are disabled, so we can safely access the CPU-local variable.
     let apic_ptr = unsafe {
         let ptr = APIC_INSTANCE.as_ptr();
         (*ptr).get()
@@ -52,7 +52,7 @@ pub fn with_borrow<R>(f: impl FnOnce(&(dyn Apic + 'static)) -> R) -> R {
 
     // If it is not initialized, lazily initialize it.
     if IS_INITIALIZED
-        .get_on_cpu(preempt_guard.current_cpu())
+        .get_on_cpu(unsafe { crate::cpu::current_cpu_unchecked() })
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
         .is_ok()
     {

@@ -155,7 +155,7 @@ impl<'a> UserMode<'a> {
     where
         F: FnMut() -> bool,
     {
-        crate::task::atomic_mode::might_sleep();
+        // crate::task::atomic_mode::might_sleep();
         self.context.execute(has_kernel_event)
     }
 
