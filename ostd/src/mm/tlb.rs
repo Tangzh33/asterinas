@@ -79,9 +79,9 @@ impl<'c> TlbFlusher<'c> {
 
     /// Synchronizes the TLB flush requests to all the relevant CPUs.
     pub fn sync_tlb_flush(&mut self) {
-        let cpu_set = self.dispatch_tlb_flush();
+        // let cpu_set = self.dispatch_tlb_flush();
 
-        sync_tlb_with(&self.irq_guard, cpu_set);
+        // sync_tlb_with(&self.irq_guard, cpu_set);
     }
 
     fn dispatch_tlb_flush(&mut self) -> CpuSet {
@@ -124,7 +124,7 @@ impl<'c> TlbFlusher<'c> {
                     .get_on_cpu(this_cpu)
                     .flush_all_set
                     .add_set(&target_cpus, Ordering::Release);
-            } else {
+            } else if self.flush_ops_size > 0 {
                 let ops_array = INCOHERENT_ADDRS.get_on_cpu(this_cpu);
                 let mut ops_array_size = 0;
                 for i in 0..FLUSH_ALL_OPS_THRESHOLD {
@@ -149,10 +149,12 @@ impl<'c> TlbFlusher<'c> {
                 ops_array.size.store(ops_array_size, Ordering::Release);
             }
 
-            let mut inner = LATR_FLUSH_ARRAY.get_on_cpu(this_cpu).entries.write();
-            inner.reserve(self.defer_pages.len().max(64));
-            for (op, page) in self.defer_pages.drain(..) {
-                inner.push((page, op, AtomicCpuSet::new(target_cpus.clone())));
+            if !self.defer_pages.is_empty() {
+                let mut inner = LATR_FLUSH_ARRAY.get_on_cpu(this_cpu).entries.write();
+                inner.reserve(self.defer_pages.len().max(64));
+                for (op, page) in self.defer_pages.drain(..) {
+                    inner.push((page, op, AtomicCpuSet::new(target_cpus.clone())));
+                }
             }
         }
 
