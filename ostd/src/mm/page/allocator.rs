@@ -67,7 +67,7 @@ cpu_local! {
     static LOCAL_CACHE: RefCell<LocalCache> = RefCell::new(LocalCache::new());
 }
 
-const LOCAL_CACHE_SIZE: usize = 64;
+const LOCAL_CACHE_SIZE: usize = 512;
 const LOCAL_LOW_WATERMARK: usize = LOCAL_CACHE_SIZE / 2;
 const LOCAL_HIGH_WATERMARK: usize = LOCAL_CACHE_SIZE / 4 * 3;
 
