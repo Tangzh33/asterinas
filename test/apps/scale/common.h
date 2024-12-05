@@ -49,12 +49,14 @@ typedef struct {
 	int *page_idx;
 	size_t region_size;
 	int thread_id;
+	int tot_threads;
 	// Pass the result back to the main thread
 	long lat;
 } thread_data_t;
 
 typedef struct {
 	size_t num_prealloc_pages_per_thread;
+	size_t num_prealloc_pages;
 	int trigger_fault_before_spawn;
 	int rand_assign_pages;
 } test_config_t;
@@ -201,8 +203,9 @@ void run_test_forked(int num_threads, void *(*worker_thread)(void *),
 void run_test(int num_threads, void *(*worker_thread)(void *),
 	      test_config_t config)
 {
-	size_t num_prealloc_pages = config.num_prealloc_pages_per_thread;
-	size_t num_tot_pages = num_prealloc_pages * num_threads;
+	size_t num_tot_pages =
+		config.num_prealloc_pages_per_thread * num_threads +
+		config.num_prealloc_pages;
 	int trigger_fault_before_spawn = config.trigger_fault_before_spawn;
 	int rand_assign_pages = config.rand_assign_pages;
 
@@ -250,9 +253,10 @@ void run_test(int num_threads, void *(*worker_thread)(void *),
 	// Create threads and trigger page faults in parallel
 	for (int i = 0; i < num_threads; i++) {
 		thread_data[i].region = region;
+		thread_data[i].region_size = num_tot_pages * PAGE_SIZE;
 		thread_data[i].page_idx = page_idx;
-		thread_data[i].region_size = num_prealloc_pages * PAGE_SIZE;
 		thread_data[i].thread_id = i;
+		thread_data[i].tot_threads = num_threads;
 
 		if (pthread_create(&threads[i], NULL, worker_thread,
 				   &thread_data[i]) != 0) {
