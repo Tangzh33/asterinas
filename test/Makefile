@@ -112,7 +112,7 @@ $(INITRAMFS)/benchmark/bin:
 	@cp /usr/local/leveldb/benchmark/db_bench $@
 	@mv $@/db_bench $@/db_bench_leveldb
 	@cp /usr/local/leveldb/benchmark/db_bench_sqlite3 $@
-	@cp -r /root/tz_utils/jinix_benchmark/mosbench/metis/obj/app $@/metis
+	@cp -r /root/tz_utils/jinix_benchmark/mosbench/metis_with_radixvm/metis/obj/app $@/metis
 	@cp -r /root/tz_utils/jinix_benchmark/mosbench/metis/run_in_vm.sh $@/metis
 	@mkdir -p $@/metis/data
 	@mkdir -p $@/psearchy
