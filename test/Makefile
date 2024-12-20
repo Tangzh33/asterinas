@@ -13,7 +13,6 @@ INITRAMFS_IMAGE := $(BUILD_DIR)/initramfs.cpio.gz
 EXT2_IMAGE := $(BUILD_DIR)/ext2.img
 EXFAT_IMAGE := $(BUILD_DIR)/exfat.img
 INITRAMFS_EMPTY_DIRS := \
-	$(INITRAMFS)/root \
 	$(INITRAMFS)/tmp \
 	$(INITRAMFS)/opt \
 	$(INITRAMFS)/proc \
@@ -21,6 +20,7 @@ INITRAMFS_EMPTY_DIRS := \
 	$(INITRAMFS)/ext2 \
 	$(INITRAMFS)/exfat
 INITRAMFS_ALL_DIRS := \
+	$(INITRAMFS)/root \
 	$(INITRAMFS)/etc \
 	$(INITRAMFS)/lib/x86_64-linux-gnu \
 	$(INITRAMFS)/lib64 \
@@ -82,11 +82,29 @@ $(INITRAMFS)/lib64:
 $(INITRAMFS)/etc:
 	@mkdir -p $@
 	@cp $(CUR_DIR)/etc/* $@
+	@mkdir -p $@/dropbear
+	@cp /etc/dropbear/* $@/dropbear
+
+$(INITRAMFS)/root:
+	@mkdir -p $@
+	@mkdir -p $@/.ssh
+	@chmod 700 $@/.ssh
+	@cp /root/.ssh/authorized_keys $@/.ssh
+	@chmod 600 $@/.ssh/authorized_keys
+	@cp -r $@/.ssh $@/..
+	@mkdir -p $@/syzkaller
+	@cp /root/fuzz/bin/linux_amd64/* $@/syzkaller
 
 # Install busybox into /bin and /usr/bin.
 $(INITRAMFS)/bin:
 	@mkdir -p $@
 	@/bin/busybox --install -s $@
+	@# mkdir -p $@/fuzz
+	@cp /root/fuzz/bin/linux_amd64/* $@
+	@# mkdir -p $@/dropbear
+	@cp /root/tz_utils/dropbear-2024.86/dropbear $@
+	@cp /root/tz_utils/dropbear-2024.86/dropbearkey $@
+	@cp /root/tz_utils/run_dropbear.sh $@
 
 $(INITRAMFS)/sbin:
 	@mkdir -p $@
@@ -122,8 +140,8 @@ $(INITRAMFS)/benchmark/bin:
 	@cp /usr/local/leveldb/benchmark/db_bench $@
 	@mv $@/db_bench $@/db_bench_leveldb
 	@cp /usr/local/leveldb/benchmark/db_bench_sqlite3 $@
-	@cp /usr/local/benchmark/hackbench $@
-	@cp /usr/local/benchmark/schbench $@
+	@#cp /usr/local/benchmark/hackbench $@
+	@#cp /usr/local/benchmark/schbench $@
 
 # Make necessary directories.
 $(INITRAMFS_EMPTY_DIRS):

@@ -73,10 +73,10 @@ impl LockedHeapWithRescue {
 
     fn rescue_if_low_memory(&self, remain_bytes: usize, layout: Layout) {
         if remain_bytes <= PAGE_SIZE * 4 {
-            debug!(
-                "Low memory in heap allocator, try to call rescue. Remaining bytes: {:x?}",
-                remain_bytes
-            );
+            // debug!(
+            //     "Low memory in heap allocator, try to call rescue. Remaining bytes: {:x?}",
+            //     remain_bytes
+            // );
             // We don't care if the rescue returns ok or not since we can still do heap allocation.
             let _ = self.rescue(&layout);
         }
@@ -85,7 +85,7 @@ impl LockedHeapWithRescue {
     fn rescue(&self, layout: &Layout) -> Result<()> {
         const MIN_NUM_FRAMES: usize = 0x4000000 / PAGE_SIZE; // 64MB
 
-        debug!("enlarge heap, layout = {:?}", layout);
+        // debug!("enlarge heap, layout = {:?}", layout);
         let mut num_frames = {
             let align = PAGE_SIZE.max(layout.align());
             debug_assert!(align % PAGE_SIZE == 0);
@@ -114,11 +114,11 @@ impl LockedHeapWithRescue {
         // SAFETY: the frame is allocated from FrameAllocator and never be deallocated,
         // so the addr is always valid.
         unsafe {
-            debug!(
-                "add frames to heap: addr = 0x{:x}, size = 0x{:x}",
-                vaddr,
-                PAGE_SIZE * num_frames
-            );
+            // debug!(
+            //     "add frames to heap: addr = 0x{:x}, size = 0x{:x}",
+            //     vaddr,
+            //     PAGE_SIZE * num_frames
+            // );
             self.add_to_heap(vaddr, PAGE_SIZE * num_frames);
         }
 
