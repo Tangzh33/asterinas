@@ -10,12 +10,16 @@ use alloc::{sync::Arc, vec::Vec};
 use core::{
     fmt::{self, Debug},
     sync::atomic::{AtomicU32, AtomicUsize, Ordering},
+    ops::Deref,
 };
 
 use aster_console::{AnyConsoleDevice, ConsoleCallback};
+use aster_keyboard::InputKey;
 use component::{init_component, ComponentInitError};
+
 use font8x8::UnicodeFonts;
-use ostd::{boot::boot_info, io::IoMem, mm::VmIo, sync::SpinLock};
+use ostd::{boot::boot_info, io::IoMem, mm::VmIo, mm::VmReader, sync::SpinLock};
+
 use spin::Once;
 
 #[init_component]
@@ -73,6 +77,7 @@ fn framebuffer_init() {
 
     framebuffer.clear();
     FRAMEBUFFER.call_once(|| SpinLock::new(framebuffer));
+    aster_keyboard::register_callback(&handle_keyboard_input);
 }
 
 impl FrameBuffer {
@@ -303,5 +308,23 @@ impl Debug for FramebufferConsole {
             .field("fg_color", &self.fg_color())
             .field("bg_color", &self.bg_color())
             .finish()
+    }
+}
+
+fn handle_keyboard_input(key: InputKey) {
+    if key == InputKey::Nul {
+        return;
+    }
+
+    let Some(console) = FRAMEBUFFER_CONSOLE.get() else {
+        return;
+    };
+
+    let callbacks = &console.callbacks;
+
+    let buffer = key.deref();
+    for callback in callbacks.disable_irq().lock().iter() {
+        let reader = VmReader::from(buffer);
+        callback(reader);
     }
 }
