@@ -18,14 +18,5 @@ make initramfs
     -netdev user,id=net01,hostfwd=tcp::11211-:11211 \
     -device virtio-net-pci,netdev=net01,disable-legacy=on,disable-modern=off,mrg_rxbuf=off,ctrl_rx=off,ctrl_rx_extra=off,ctrl_vlan=off,ctrl_vq=off,ctrl_guest_offloads=off,ctrl_mac_addr=off,event_idx=off,queue_reset=off,guest_announce=off,indirect_desc=off \
     -append 'console=ttyS0 rdinit=/usr/bin/busybox quiet mitigations=off hugepages=0 transparent_hugepage=never SHELL=/bin/sh LOGNAME=root HOME=/ USER=root PATH=/bin:/benchmark -- sh -l' \
+    -qmp tcp:127.0.0.1:${QMP_PORT-9889},server,nowait \
     -nographic
-
-# Do the following in VM:
-# Mount necessary fs
-# mount -t devtmpfs devtmpfs /dev
-# Enable network
-# ip link set lo up
-# ip link set eth0 up
-# ifconfig eth0 10.0.2.15
-# Mount ext2
-# mount -t ext2 /dev/vda /ext2
