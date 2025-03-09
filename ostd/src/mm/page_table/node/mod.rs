@@ -40,7 +40,7 @@ use crate::{
     mm::{
         paddr_to_vaddr,
         page::{
-            self, inc_page_ref_count,
+            self, allocator, inc_page_ref_count,
             meta::{MapTrackingStatus, PageMeta, PageTablePageMeta, PageUsage},
             DynPage, Page, PageRef,
         },
@@ -352,6 +352,18 @@ where
         // SAFETY: The index is within the bound and the PTE is plain-old-data.
         unsafe { ptr.add(idx).write(pte) }
     }
+
+    pub(super) fn write_pte_meta(&mut self, idx: usize, val: u64) {
+        debug_assert!(idx < nr_subpage_per_huge::<C>());
+        let ptr = paddr_to_vaddr(self.page.meta().per_pte_meta) as *mut u64;
+        unsafe { ptr.add(idx).write_volatile(val) }
+    }
+
+    pub(super) fn read_pte_meta(&self, idx: usize) -> u64 {
+        debug_assert!(idx < nr_subpage_per_huge::<C>());
+        let ptr = paddr_to_vaddr(self.page.meta().per_pte_meta) as *const u64;
+        unsafe { ptr.add(idx).read_volatile() }
+    }
 }
 
 impl<E: PageTableEntryTrait, C: PagingConstsTrait> Drop for PageTableNode<E, C>
@@ -380,6 +392,8 @@ where
         let paddr = page.paddr();
         let level = page.meta().level;
         let is_tracked = page.meta().is_tracked;
+
+        allocator::dealloc_single(page.meta().per_pte_meta);
 
         // Drop the children.
         for i in 0..nr_subpage_per_huge::<C>() {

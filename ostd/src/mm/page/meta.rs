@@ -54,8 +54,8 @@ use crate::{
     mm::{
         paddr_to_vaddr, page_size,
         page_table::{boot_pt, PageTableEntryTrait},
-        CachePolicy, Paddr, PageFlags, PageProperty, PagingConstsTrait, PagingLevel,
-        PrivilegedPageFlags, Vaddr, PAGE_SIZE,
+        CachePolicy, Frame, FrameAllocOptions, Paddr, PageFlags, PageProperty, PagingConstsTrait,
+        PagingLevel, PrivilegedPageFlags, Vaddr, PAGE_SIZE,
     },
     sync::spin,
 };
@@ -111,7 +111,7 @@ pub(super) union MetaSlotInner {
 //
 // Note that the size of `MetaSlot` should be a multiple of 8 bytes to prevent
 // cross-page accesses.
-const_assert_eq!(size_of::<MetaSlot>(), 16);
+const_assert_eq!(size_of::<MetaSlot>(), 24);
 
 /// All page metadata types must implemented this sealed trait,
 /// which ensures that each fields of `PageUsage` has one and only
@@ -190,6 +190,8 @@ pub(in crate::mm) struct PageTablePageMeta<
     pub level: PagingLevel,
     /// Whether the pages mapped by the node is tracked.
     pub is_tracked: MapTrackingStatus,
+    /// Per-PTE metadata.
+    pub per_pte_meta: Paddr,
     _phantom: core::marker::PhantomData<(E, C)>,
 }
 
@@ -219,6 +221,7 @@ where
             nr_children: UnsafeCell::new(0),
             level,
             is_tracked,
+            per_pte_meta: allocator::alloc_raw().unwrap(),
             _phantom: PhantomData,
         }
     }

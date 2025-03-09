@@ -132,19 +132,23 @@ impl LocalCache {
 ///
 /// The metadata of the page is initialized with the given metadata.
 pub(crate) fn alloc_single<M: PageMeta>(metadata: M) -> Option<Page<M>> {
+    alloc_raw().map(|paddr| Page::from_unused(paddr, metadata))
+}
+
+pub(crate) fn alloc_raw() -> Option<Paddr> {
     if !crate::INITIALIZED.load(Ordering::Acquire) {
-        let mut allocator = PAGE_ALLOCATOR.get().unwrap().lock();
-        return allocator.alloc(1).map(|idx| {
-            let paddr = idx * PAGE_SIZE;
-            Page::from_unused(paddr, metadata)
-        });
+        return PAGE_ALLOCATOR
+            .get()
+            .unwrap()
+            .lock()
+            .alloc(1)
+            .map(|idx| idx * PAGE_SIZE);
     }
 
     let irq_guard = crate::trap::disable_local();
     let local_guard = LOCAL_CACHE.get_with(&irq_guard);
-    let pa = local_guard.borrow_mut().alloc();
-
-    Some(Page::from_unused(pa, metadata))
+    let addr = local_guard.borrow_mut().alloc();
+    Some(addr)
 }
 
 pub(crate) fn dealloc_single(paddr: Paddr) {

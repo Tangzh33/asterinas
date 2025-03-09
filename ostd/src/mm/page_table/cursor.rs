@@ -293,6 +293,9 @@ where
                     });
                 }
                 ChildRef::Token(token) => {
+                    let node = self.guards[self.level as usize - 1].as_mut().unwrap();
+                    let _ = node.read_pte_meta(pte_index::<C>(va, level));
+                    // assert!(tok == token.into_raw_inner() as u64);
                     return Ok(PageTableItem::Marked {
                         va,
                         len: page_size::<C>(level),
@@ -684,6 +687,11 @@ where
 
             // Mark the current page.
             let _ = cur_entry.replace(Child::Token(token));
+            let node = self.0.guards[self.0.level as usize - 1].as_mut().unwrap();
+            node.write_pte_meta(
+                pte_index::<C>(self.0.va, self.0.level),
+                token.into_raw_inner() as u64,
+            );
 
             // Move forward.
             self.0.move_forward();
