@@ -24,7 +24,7 @@ use ostd::{
         CachePolicy, FrameAllocOptions, PageFlags, PageProperty, VmSpace, MAX_USERSPACE_VADDR,
     },
 };
-use vm_allocator::{PerCpuAllocator, VmAllocator};
+use vm_allocator::{SimpleAllocator, VmAllocator};
 use vm_mapping::{VmMarker, VmoBackedVMA};
 
 use self::vm_mapping::MappedVmo;
@@ -110,7 +110,7 @@ pub(super) struct Vmar_ {
     /// The attached `VmSpace`
     vm_space: Arc<VmSpace>,
 
-    allocator: PerCpuAllocator,
+    allocator: SimpleAllocator,
 
     vmo_backed_id_alloc: AtomicU32,
     /// The map from the VMO-backed ID to the VMA structure.
@@ -145,7 +145,7 @@ impl Vmar_ {
             size: ROOT_VMAR_CAP_ADDR - ROOT_VMAR_LOWEST_ADDR,
             vm_space,
 
-            allocator: PerCpuAllocator::new(),
+            allocator: SimpleAllocator::new(),
 
             vmo_backed_id_alloc: AtomicU32::new(1),
             vma_map: RwLock::new(BTreeMap::new()),
