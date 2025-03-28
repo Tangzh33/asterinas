@@ -58,6 +58,7 @@ COMMON_QEMU_ARGS="\
     -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
     -drive if=none,format=raw,id=x0,file=./test/build/ext2.img \
     -drive if=none,format=raw,id=x1,file=./test/build/exfat.img \
+    -drive if=none,format=raw,id=x2,file=./test/build/metis.img \
     -qmp tcp:127.0.0.1:${QMP_PORT-9889},server,nowait
 "
 

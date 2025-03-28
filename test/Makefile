@@ -52,6 +52,8 @@ $(INITRAMFS)/lib/x86_64-linux-gnu: | $(VDSO_LIB)
 	@# required for VDSO
 	@cp -L $(VDSO_LIB) $@
 	@cp -L /lib/x86_64-linux-gnu/libdb-5.3.so $@
+	@# required for tc-malloc
+	@cp -L /lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4 $@
 
 $(VDSO_LIB): | $(VDSO_DIR) $(BINARY_CACHE_DIR)/vdso64.so
 	@# TODO: use a custom compiled vdso.so file in the future.
@@ -88,8 +90,8 @@ $(INITRAMFS)/usr/bin: | $(INITRAMFS)/bin
 
 $(INITRAMFS)/usr/local:
 	@mkdir -p $@
-	@cp -r /usr/local/apache2 $@
-	@cp -r /usr/local/apr $@
+	# @cp -r /usr/local/apache2 $@
+	# @cp -r /usr/local/apr $@
 
 .PHONY: $(INITRAMFS)/test
 $(INITRAMFS)/test:
@@ -101,17 +103,19 @@ $(INITRAMFS)/benchmark: | $(INITRAMFS)/benchmark/bin
 $(INITRAMFS)/benchmark/bin:
 	@mkdir -p $@
 	@mkdir -p $@/../apache/logs
-	@cp -r /root/mosbench/metis/obj/app $@/metis
-	@cp -r /root/mosbench/metis/run_in_vm.sh $@/metis
+	@cp -r /root/tz_utils/jinix_benchmark/mosbench/metis_with_radixvm/metis/obj/app $@/metis
+	@# Metis with tcmalloc
+	@# cp -r /root/tz_utils/jinix_benchmark/mosbench/metis/obj/app $@/metis
+	@cp -r /root/tz_utils/jinix_benchmark/mosbench/metis/run_in_vm.sh $@/metis
 	@mkdir -p $@/metis/data
 	@mkdir -p $@/psearchy
-	@cp /root/mosbench/psearchy/mkdb/pedsort $@/psearchy
-	@cp /root/mosbench/psearchy/create_dirs.sh $@/psearchy
-	@cp /root/mosbench/psearchy/run_in_vm.sh $@/psearchy
+	@cp /root/tz_utils/jinix_benchmark/mosbench/psearchy/mkdb/pedsort $@/psearchy
+	@cp /root/tz_utils/jinix_benchmark/mosbench/psearchy/create_dirs.sh $@/psearchy
+	@cp /root/tz_utils/jinix_benchmark/mosbench/psearchy/run_in_vm.sh $@/psearchy
 	@mkdir -p $@/dedup/data
-	@cp /root/parsec-3.0/pkgs/kernels/dedup/inst/amd64-linux.gcc/bin/dedup $@/dedup
-	@cp /root/parsec-3.0/pkgs/kernels/dedup/run_in_vm.sh $@/dedup
-	@cp /root/parsec-3.0/pkgs/kernels/dedup/inputs/*.dat $@/dedup/data
+	@cp /root/tz_utils/jinix_benchmark/parsec-3.0/pkgs/kernels/dedup/inst/amd64-linux.gcc/bin/dedup $@/dedup
+	@cp /root/tz_utils/jinix_benchmark/parsec-3.0/pkgs/kernels/dedup/run_in_vm.sh $@/dedup
+	@cp /root/tz_utils/jinix_benchmark/parsec-3.0/pkgs/kernels/dedup/inputs/*.dat $@/dedup/data
 	
 # Make necessary directories.
 $(INITRAMFS_EMPTY_DIRS):
@@ -156,11 +160,13 @@ $(EXFAT_IMAGE):
 	@mkfs.exfat $(EXFAT_IMAGE)
 
 $(METIS_IMAGE):
-	@dd if=/dev/zero of=$(METIS_IMAGE) bs=2G count=15 iflag=fullblock
+	@dd if=/dev/zero of=$(METIS_IMAGE) bs=2G count=1 iflag=fullblock
 	@mkfs.ext2 $(METIS_IMAGE)
 	@mkdir -p /mnt/metis_mount
 	@mount -t ext2 $(METIS_IMAGE) /mnt/metis_mount
-	@cp -r /root/mosbench/metis/data/* /mnt/metis_mount/
+	@mkdir -p /mnt/metis_mount/wr
+	@cp /root/tz_utils/jinix_benchmark/mosbench/metis/data/wr/800MB.txt /mnt/metis_mount/wr
+	@cp -r /root/tz_utils/linux_kernel/linux-2.6.35 /mnt/metis_mount
 	@umount /mnt/metis_mount
 	@rm -rf /mnt/metis_mount/
 
