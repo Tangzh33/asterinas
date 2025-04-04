@@ -17,6 +17,7 @@ INITRAMFS_IMAGE := $(BUILD_DIR)/initramfs.cpio.gz
 endif
 EXT2_IMAGE := $(BUILD_DIR)/ext2.img
 EXFAT_IMAGE := $(BUILD_DIR)/exfat.img
+METIS_IMAGE := $(BUILD_DIR)/metis.img
 INITRAMFS_EMPTY_DIRS := \
 	$(INITRAMFS)/root \
 	$(INITRAMFS)/tmp \
@@ -71,6 +72,21 @@ $(INITRAMFS)/lib/x86_64-linux-gnu: | $(VDSO_LIB)
 	@# required for VDSO
 	@cp -L $(VDSO_LIB) $@
 	@cp -L /lib/x86_64-linux-gnu/libdb-5.3.so $@
+	@cp -L /lib/x86_64-linux-gnu/libICE.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libSM.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libX11.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libXau.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libXdmcp.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libXext.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libXmu.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libXt.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libbsd.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libgomp.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libmd.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libxcb.so.1 $@
+	@cp -L /lib64/ld-linux-x86-64.so.2 $@
+	@cp -L /root/tz_utils/gcc-4.8.5/install/lib64/libstdc++.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libuuid.so.1 $@
 
 $(VDSO_LIB): | $(VDSO_DIR) $(BINARY_CACHE_DIR)/vdso64.so
 	@# TODO: use a custom compiled vdso.so file in the future.
@@ -107,9 +123,9 @@ $(INITRAMFS)/usr/bin: | $(INITRAMFS)/bin
 
 $(INITRAMFS)/usr/local:
 	@mkdir -p $@
-	@cp -r /usr/local/nginx $@
-	@cp -r /usr/local/redis $@
-	@cp -r /usr/local/memcached $@
+	@# cp -r /usr/local/nginx $@
+	@# cp -r /usr/local/redis $@
+	@# cp -r /usr/local/memcached $@
 
 .PHONY: $(INITRAMFS)/test
 $(INITRAMFS)/test:
@@ -120,19 +136,19 @@ $(INITRAMFS)/benchmark: | $(INITRAMFS)/benchmark/bin
 
 $(INITRAMFS)/benchmark/bin:
 	@mkdir -p $@
-	@cp /usr/local/benchmark/sysbench/bin/sysbench $@
-	@cp /usr/local/benchmark/iperf/bin/iperf3 $@
-	@cp /usr/local/benchmark/membench/membench $@
-	@cp /usr/local/benchmark/iozone $@
-	@cp -r /usr/local/benchmark/unixbench $@
-	@cp -r /usr/local/benchmark/lmbench $@
-	@cp /usr/local/benchmark/fio/bin/fio $@
-	@cp /usr/local/benchmark/sqlite-speedtest1 $@
-	@cp /usr/local/leveldb/benchmark/db_bench $@
-	@mv $@/db_bench $@/db_bench_leveldb
-	@cp /usr/local/leveldb/benchmark/db_bench_sqlite3 $@
-	@cp /usr/local/benchmark/hackbench $@
-	@cp /usr/local/benchmark/schbench $@
+	@mkdir -p $@/../apache/logs
+	@# Metis with RadixVM
+	@cp -r /root/tz_utils/mm-scalability-benchmark/mosbench/metis_with_radixvm/metis/obj/app $@/metis
+	@# cp -r /root/tz_utils/mm-scalability-benchmark/mosbench/metis/obj/app $@/metis
+	@cp -r /root/tz_utils/mm-scalability-benchmark/mosbench/metis/run_in_vm.sh $@/metis
+	@mkdir -p $@/metis/data
+	@mkdir -p $@/psearchy
+	@cp /root/tz_utils/mm-scalability-benchmark/mosbench/psearchy/mkdb/pedsort $@/psearchy
+	@cp /root/tz_utils/mm-scalability-benchmark/mosbench/psearchy/create_dirs.sh $@/psearchy
+	@cp /root/tz_utils/mm-scalability-benchmark/mosbench/psearchy/run_in_vm.sh $@/psearchy
+	@bash /root/tz_utils/mm-scalability-benchmark/parsec-3.0/utils/init_run_dir.sh
+	@cp /root/tz_utils/mm-scalability-benchmark/parsec-3.0/utils/run_in_vm.sh $@/
+	@cp /root/tz_utils/vm_mount_disk.sh $@/../..
 	
 # Make necessary directories.
 $(INITRAMFS_EMPTY_DIRS):
@@ -180,6 +196,20 @@ $(EXT2_IMAGE):
 $(EXFAT_IMAGE):
 	@fallocate -l 64M $(EXFAT_IMAGE)
 	@mkfs.exfat $(EXFAT_IMAGE)
+
+$(METIS_IMAGE):
+	@dd if=/dev/zero of=$(METIS_IMAGE) bs=2G count=3 iflag=fullblock
+	@mkfs.ext2 $(METIS_IMAGE)
+	@mkdir -p /mnt/metis_mount
+	@mount -t ext2 $(METIS_IMAGE) /mnt/metis_mount
+	@mkdir -p /mnt/metis_mount/wr
+	@cp /root/tz_utils/mm-scalability-benchmark/mosbench/metis/data/wr/800MB.txt /mnt/metis_mount/wr
+	@cp -r /root/tz_utils/linux_kernel/linux-2.6.35 /mnt/metis_mount
+	@bash /root/tz_utils/mm-scalability-benchmark/parsec-3.0/utils/init_input_dir.sh
+	@tree /mnt/metis_mount/parsec-data
+	@du -d 1 -h /mnt/metis_mount/
+	@umount /mnt/metis_mount
+	@rm -rf /mnt/metis_mount/
 
 .PHONY: build
 build: $(INITRAMFS_IMAGE) $(EXT2_IMAGE) $(EXFAT_IMAGE) $(METIS_IMAGE)
