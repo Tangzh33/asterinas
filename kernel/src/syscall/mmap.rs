@@ -141,13 +141,12 @@ fn do_sys_mmap(
                 }
 
                 let inode = inode_handle.dentry().inode();
-                inode
-                    .page_cache()
-                    .ok_or(Error::with_message(
-                        Errno::EBADF,
-                        "File does not have page cache",
-                    ))?
-                    .to_dyn()
+                match inode.page_cache() {
+                    Some(page_cache) => page_cache.to_dyn(),
+                    None => {
+                        return file.mmap(addr, len, offset, vm_perms, ctx);
+                    }
+                }
             };
 
             options = options

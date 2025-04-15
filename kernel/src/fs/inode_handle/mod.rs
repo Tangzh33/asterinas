@@ -8,6 +8,7 @@ mod dyn_cap;
 mod static_cap;
 
 use core::sync::atomic::{AtomicU32, Ordering};
+use crate::vm::perms::VmPerms;
 
 use aster_rights::Rights;
 use inherit_methods_macro::inherit_methods;
@@ -228,6 +229,23 @@ impl InodeHandle_ {
         self.dentry.inode().ioctl(cmd, arg)
     }
 
+    fn mmap(
+            &self,
+            addr: Vaddr,
+            len: usize,
+            offset: usize,
+            perms: VmPerms,
+            ctx: &Context,
+        ) -> Result<Vaddr> {
+            // If file_io exists, delegate mmap to it
+            if let Some(ref file_io) = self.file_io {
+                return file_io.mmap(addr, len, offset, perms, ctx);
+            }
+
+            // Otherwise, delegate mmap to the inode
+            self.dentry.inode().mmap(addr, len, offset, perms, ctx)
+        }
+
     fn test_range_lock(&self, lock: RangeLockItem) -> Result<RangeLockItem> {
         let mut req_lock = lock.clone();
         if let Some(extension) = self.dentry.inode().extension() {
@@ -395,6 +413,10 @@ pub trait FileIo: Pollable + Send + Sync + 'static {
     fn read(&self, writer: &mut VmWriter) -> Result<usize>;
 
     fn write(&self, reader: &mut VmReader) -> Result<usize>;
+
+    fn mmap(&self, addr: Vaddr, len: usize, offset: usize, perms: VmPerms, ctx: &Context) -> Result<Vaddr> {
+        return_errno_with_message!(Errno::EINVAL, "mmap is not supported");
+    }
 
     fn ioctl(&self, cmd: IoctlCmd, arg: usize) -> Result<i32> {
         return_errno_with_message!(Errno::EINVAL, "ioctl is not supported");

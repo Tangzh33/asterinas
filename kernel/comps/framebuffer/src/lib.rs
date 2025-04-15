@@ -18,7 +18,7 @@ use aster_keyboard::InputKey;
 use component::{init_component, ComponentInitError};
 
 use font8x8::UnicodeFonts;
-use ostd::{boot::boot_info, io::IoMem, mm::VmIo, mm::VmReader, sync::SpinLock};
+use ostd::{boot::boot_info, io::IoMem, mm::VmIo, mm::VmReader, sync::SpinLock, sync::PreemptDisabled, sync::SpinLockGuard};
 
 use spin::Once;
 
@@ -34,6 +34,7 @@ fn init() -> Result<(), ComponentInitError> {
 pub struct FrameBuffer {
     io_mem: IoMem,
     frame: Vec<u8>,
+    base: usize,
     width: usize,
     height: usize,
     bytes_per_pixel: usize,
@@ -49,6 +50,10 @@ pub struct FramebufferConsole {
 }
 
 pub static FRAMEBUFFER: Once<SpinLock<FrameBuffer>> = Once::new();
+
+pub fn get_framebuffer_info() -> Option<SpinLockGuard<'static, FrameBuffer, PreemptDisabled>> {
+    FRAMEBUFFER.get().map(|fb| fb.lock())
+}
 
 fn framebuffer_init() {
     let Some(framebuffer_arg) = boot_info().framebuffer_arg else {
@@ -69,6 +74,7 @@ fn framebuffer_init() {
         FrameBuffer {
             io_mem,
             frame,
+            base: framebuffer_arg.address,
             width: framebuffer_arg.width,
             height: framebuffer_arg.height,
             bytes_per_pixel: framebuffer_arg.bpp / 8,
@@ -81,6 +87,18 @@ fn framebuffer_init() {
 }
 
 impl FrameBuffer {
+    pub fn width(&self) -> usize {
+        self.width
+    }
+
+    pub fn height(&self) -> usize {
+        self.height
+    }
+
+    pub fn io_mem_base(&self) -> usize {
+        self.base
+    }
+
     /// Returns the resolution in pixels.
     pub fn resolution(&self) -> (usize, usize) {
         (self.width, self.height)
