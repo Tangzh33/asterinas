@@ -5,9 +5,12 @@ use alloc::sync::{Arc, Weak};
 use ostd::sync::RwLock;
 
 use crate::{
-    fs::utils::{
-        systree_inode::{SysTreeInodeTy, SysTreeNodeKind},
-        FileSystem, Inode, InodeMode, Metadata,
+    fs::{
+        notify::FsnotifyCommon,
+        utils::{
+            systree_inode::{SysTreeInodeTy, SysTreeNodeKind},
+            FileSystem, Inode, InodeMode, Metadata,
+        },
     },
     Result,
 };
@@ -24,6 +27,8 @@ pub struct CgroupInode {
     parent: Weak<CgroupInode>,
     /// Weak self-reference for cyclic data structures.
     this: Weak<CgroupInode>,
+    /// Fsnotify common.
+    fsnotify_common: FsnotifyCommon,
 }
 
 impl SysTreeInodeTy for CgroupInode {
@@ -42,6 +47,7 @@ impl SysTreeInodeTy for CgroupInode {
             mode: RwLock::new(mode),
             parent,
             this: this.clone(),
+            fsnotify_common: FsnotifyCommon::new(),
         })
     }
 
@@ -68,6 +74,10 @@ impl SysTreeInodeTy for CgroupInode {
 
     fn this(&self) -> Arc<Self> {
         self.this.upgrade().expect("Weak ref invalid")
+    }
+
+    fn fsnotify(&self) -> &FsnotifyCommon {
+        &self.fsnotify_common
     }
 }
 

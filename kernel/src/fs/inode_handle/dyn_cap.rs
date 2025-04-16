@@ -89,7 +89,7 @@ impl FileLike for InodeHandle<Rights> {
     fn set_group(&self, gid: Gid) -> Result<()>;
     fn seek(&self, seek_from: SeekFrom) -> Result<usize>;
     fn mmap(&self) -> Result<MemoryToMap>;
-
+    fn path(&self) -> Option<&Path>;
     fn read(&self, writer: &mut VmWriter) -> Result<usize> {
         if !self.1.contains(Rights::READ) {
             return_errno_with_message!(Errno::EBADF, "file is not readable");
