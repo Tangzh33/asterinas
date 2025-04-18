@@ -11,8 +11,8 @@ use crate::{
     process::signal::{PollHandle, Pollable},
     vm::perms::VmPerms,
 };
-use align_ext::AlignExt;
-use ostd::{boot::boot_info, Pod};
+
+use ostd::{Pod, mm::Frame, mm::UFrame, mm::PageFlags, mm::PageProperty, mm::CachePolicy};
 pub(crate) use aster_framebuffer::get_framebuffer_info;
 
 pub struct Fb;
@@ -25,7 +25,6 @@ pub struct FbVarScreenInfo {
     pub xres_virtual: u32,
     pub yres_virtual: u32,
     pub bits_per_pixel: u32,
-    // Add other fields as needed
 }
 
 #[repr(C)]
@@ -59,6 +58,16 @@ impl Pollable for Fb {
     }
 }
 
+/// Aligns the address down to the nearest lower multiple of `alignment`.
+fn align_down(addr: usize, alignment: usize) -> usize {
+    addr & !(alignment - 1)
+}
+
+/// Aligns the address up to the nearest higher multiple of `alignment`.
+fn align_up(addr: usize, alignment: usize) -> usize {
+    (addr + alignment - 1) & !(alignment - 1)
+}
+
 impl FileIo for Fb {
     fn read(&self, _writer: &mut VmWriter) -> Result<usize> {
         println!("Fb read");
@@ -78,8 +87,68 @@ impl FileIo for Fb {
         perms: VmPerms,
         ctx: &Context,
     ) -> Result<Vaddr> {
-        println!("Fb mmap: Not supported yet");
-        Err(Errno::ENOSYS.into()) // Return "Operation not supported" error as a proper `Result`
+        println!("Fb mmap: Mapping framebuffer to user space");
+    
+        // Get the user space context
+        let user_space: CurrentUserSpace<'_> = ctx.user_space();
+        let root_vmar = user_space.root_vmar();
+        println!("start to get framebuffer info, addr {:X}, len {:X}, offset {:X}",
+                addr, len, offset);
+
+        //if let Some(framebuffer) = get_framebuffer_info().as_deref() {
+            // Ensure the framebuffer base address is page-aligned
+            let framebuffer_paddr_start = align_down(0x7eab2000 + offset, PAGE_SIZE);
+            let framebuffer_paddr_end = align_up(
+                framebuffer_paddr_start + len,
+                PAGE_SIZE,
+            );
+            println!("start to get vaddr_range");
+            // Ensure the virtual address range is page-aligned
+            let vaddr_range = if addr == 0 {
+                root_vmar.vm_space().allocate_virtual_address_range(len)?
+            } else {
+                align_down(addr, PAGE_SIZE)..align_up(addr + len, PAGE_SIZE)
+            };
+    
+            println!(
+                "Got vaddr_range start: {:X}, end: {:X}",
+                vaddr_range.start, vaddr_range.end
+            );
+    
+            // Create a mutable cursor for the virtual address range
+            let mut cursor = root_vmar.vm_space().cursor_mut(&vaddr_range)?;
+            println!("Got cursor");
+    
+            // Map each page in the framebuffer's physical address range
+            let mut current_paddr = framebuffer_paddr_start;
+            let mut current_vaddr = vaddr_range.start;
+            println!("Start to map");
+    
+            while current_paddr < framebuffer_paddr_end {
+                // Create a Frame<dyn AnyFrameMeta> from the physical address
+                let dyn_frame = Frame::from_in_use(current_paddr)
+                    .map_err(|_| Errno::ENOMEM)?; // Handle errors if the frame is not in use
+                //println!("Got dyn_frame");
+                // Convert the Frame<dyn AnyFrameMeta> to a UFrame
+                let frame = UFrame::try_from(dyn_frame)
+                    .map_err(|_| Errno::EINVAL)?; // Handle errors if the frame is not untyped
+                //println!("Got UFrame");
+                // Map the frame to the virtual address
+                let temp_perms = PageProperty::new(PageFlags::RW, CachePolicy::Writeback);
+                cursor.map(frame, temp_perms);
+    
+                //println!("cur_paddr {:X}, cur_vaddr {:X}", current_paddr, current_vaddr);
+    
+                // Move to the next page
+                current_paddr += PAGE_SIZE;
+                current_vaddr += PAGE_SIZE;
+            }
+    
+            Ok(vaddr_range.start) // Return the starting virtual address
+        // } else {
+        //     println!("ENOMEM");
+        //     Err(Errno::ENOMEM.into())
+        // }
     }
 
     fn ioctl(&self, cmd: IoctlCmd, arg: usize) -> Result<i32> {
@@ -96,7 +165,7 @@ impl FileIo for Fb {
                         yres: framebuffer.height() as u32,
                         xres_virtual: framebuffer.width() as u32,
                         yres_virtual: framebuffer.height() as u32,
-                        bits_per_pixel: framebuffer.bytes_per_pixel() as u32,
+                        bits_per_pixel: (framebuffer.bytes_per_pixel() * 8) as u32,
                     };
 
                     current_userspace!().write_val(arg, &screen_info)?;
@@ -112,7 +181,7 @@ impl FileIo for Fb {
 
                 // Use get_framebuffer_info to access the framebuffer
                 if let Some(framebuffer_guard) = get_framebuffer_info() {
-                    let framebuffer = &*framebuffer_guard; // Dereference the guard to access the FrameBuffer
+                    let framebuffer = &*framebuffer_guard;
 
                     let screen_info = FbFixScreenInfo {
                         smem_start: framebuffer.io_mem_base(),

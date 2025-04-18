@@ -18,7 +18,12 @@ use aster_keyboard::InputKey;
 use component::{init_component, ComponentInitError};
 
 use font8x8::UnicodeFonts;
-use ostd::{boot::boot_info, io::IoMem, mm::VmIo, mm::VmReader, sync::SpinLock, sync::PreemptDisabled, sync::SpinLockGuard};
+use ostd::{
+    boot::boot_info,
+    io::IoMem,
+    mm::{VmIo, VmReader},
+    sync::{SpinLock, PreemptDisabled, SpinLockGuard},
+};
 
 use spin::Once;
 
@@ -179,7 +184,7 @@ impl FrameBuffer {
     pub fn clear(&mut self) {
         self.frame.fill(0);
         self.flush_frame();
-    }
+    } 
 }
 
 pub static CONSOLE_NAME: &str = "Framebuffer-Console";

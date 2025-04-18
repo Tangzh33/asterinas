@@ -29,7 +29,7 @@ use crate::{
     task::{disable_preempt, DisabledPreemptGuard},
     Error,
 };
-
+use align_ext::AlignExt;
 /// A virtual address space for user-mode tasks, enabling safe manipulation of user-space memory.
 ///
 /// The `VmSpace` type provides memory isolation guarantees between user-space and
@@ -220,6 +220,38 @@ impl VmSpace {
         // SAFETY: The memory range is in user space, as checked above.
         Ok(unsafe { VmWriter::<Fallible>::from_user_space(vaddr as *mut u8, len) })
     }
+
+    /// Allocates a free virtual memory range of the specified size.
+    ///
+    /// # Arguments
+    /// - `len`: The length of the range to allocate (must be page-aligned).
+    ///
+    /// # Returns
+    /// - `Ok(Range<Vaddr>)`: The allocated virtual address range.
+    /// - `Err`: An error if no suitable range is found.
+    pub fn allocate_virtual_address_range(&self, len: usize) -> Result<Range<Vaddr>> {
+        // Ensure the length is page-aligned
+        let len = len.align_up(super::PAGE_SIZE);
+
+        // Define the range for the entire user space
+        let user_space_range = 0x1000..MAX_USERSPACE_VADDR;
+
+        // Create a cursor to iterate through the virtual address space
+        let mut cursor = self.cursor(&user_space_range)?;
+
+        // Iterate through the virtual address space to find a free range
+        while let Some(item) = cursor.next() {
+            if let VmItem::NotMapped { va, len: free_len } = item {
+                if free_len >= len {
+                    return Ok(va..(va + len));
+                }
+            }
+        }
+
+        // Return an out-of-memory error if no suitable range is found
+        Err(Error::NoMemory)
+    }
+    
 }
 
 impl Default for VmSpace {
