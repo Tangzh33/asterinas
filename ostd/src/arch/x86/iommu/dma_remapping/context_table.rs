@@ -14,7 +14,7 @@ use crate::{
     mm::{
         dma::Daddr,
         page_prop::{CachePolicy, PageProperty, PrivilegedPageFlags as PrivFlags},
-        page_table::{PageTableError, PageTableItem},
+        page_table::PageTableError,
         Frame, FrameAllocOptions, Paddr, PageFlags, PageTable, VmIo, PAGE_SIZE,
     },
     task::disable_preempt,
@@ -94,10 +94,8 @@ impl RootTable {
             return Err(ContextTableError::InvalidDeviceId);
         }
 
-        let context_table = self.get_or_create_context_table(device);
-        context_table.unmap(device, daddr)?;
-
-        Ok(())
+        self.get_or_create_context_table(device)
+            .unmap(device, daddr)
     }
 
     /// Specifies the device page table instead of creating a page table if not exists.
@@ -308,7 +306,6 @@ impl ContextTable {
         );
 
         let from = daddr..daddr + PAGE_SIZE;
-        let to = paddr..paddr + PAGE_SIZE;
         let prop = PageProperty {
             flags: PageFlags::RW,
             cache: CachePolicy::Uncacheable,
@@ -316,8 +313,14 @@ impl ContextTable {
         };
 
         let pt = self.get_or_create_page_table(device);
+        let preempt_guard = disable_preempt();
         // SAFETY: The safety is upheld by the caller.
-        unsafe { pt.map(&from, &to, prop).unwrap() };
+        unsafe {
+            pt.cursor_mut(&preempt_guard, &from)
+                .unwrap()
+                .map((paddr, 1, prop))
+                .unwrap()
+        };
 
         Ok(())
     }
@@ -336,8 +339,7 @@ impl ContextTable {
             .unwrap();
 
         // SAFETY: This unmaps a page from the context table, which is always safe.
-        let item = unsafe { cursor.take_next(PAGE_SIZE) };
-        debug_assert!(matches!(item, PageTableItem::MappedUntracked { .. }));
+        let _ = unsafe { cursor.take_next(PAGE_SIZE) };
 
         Ok(())
     }
