@@ -25,7 +25,9 @@ INITRAMFS_EMPTY_DIRS := \
 	$(INITRAMFS)/dev \
 	$(INITRAMFS)/sys \
 	$(INITRAMFS)/ext2 \
-	$(INITRAMFS)/exfat
+	$(INITRAMFS)/exfat \
+	$(INITRAMFS)/var/log
+
 INITRAMFS_ALL_DIRS := \
 	$(INITRAMFS)/etc \
 	$(INITRAMFS)/lib/x86_64-linux-gnu \
@@ -34,7 +36,13 @@ INITRAMFS_ALL_DIRS := \
 	$(INITRAMFS)/sbin \
 	$(INITRAMFS)/usr/bin \
 	$(INITRAMFS)/usr/local \
+	$(INITRAMFS)/usr/share \
+	$(INITRAMFS)/test \
 	$(INITRAMFS)/benchmark \
+	$(INITRAMFS)/etc/X11 \
+	$(INITRAMFS)/usr/lib \
+	$(INITRAMFS)/usr/lib/x86_64-linux-gnu \
+	$(INITRAMFS)/usr/lib/x86_64-linux-gnu/dri \
 	$(INITRAMFS_EMPTY_DIRS)
 
 # Include test as target if BENCHMARK is not set.
@@ -79,11 +87,79 @@ $(INITRAMFS)/lib/x86_64-linux-gnu: | $(VDSO_LIB)
 	@# required for netlink test
 	@cp -L /lib/x86_64-linux-gnu/libnl-3.so.200 $@
 	@cp -L /lib/x86_64-linux-gnu/libnl-route-3.so.200 $@
+	@# required for Xorg
+	@cp -L /lib/x86_64-linux-gnu/libpixman-1.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libpciaccess.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libXau.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libXdmcp.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libXfont2.so.2 $@
+	@cp -L /lib/x86_64-linux-gnu/libxshmfence.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libdbus-1.so.3 $@
+	@cp -L /lib/x86_64-linux-gnu/libudev.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libdrm.so.2 $@
+	@cp -L /lib/x86_64-linux-gnu/libxcvt.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libbsd.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libbz2.so.1.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libfontenc.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libfreetype.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libsystemd.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libcap.so.2 $@
+	@cp -L /lib/x86_64-linux-gnu/libmd.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libpng16.so.16 $@
+	@cp -L /lib/x86_64-linux-gnu/libbrotlidec.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libgcrypt.so.20 $@
+	@cp -L /lib/x86_64-linux-gnu/liblz4.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/liblzma.so.5 $@
+	@cp -L /lib/x86_64-linux-gnu/libzstd.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libbrotlicommon.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libgpg-error.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libGL.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libGLdispatch.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libGLX.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libX11.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libxcb.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libLLVM-15.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libexpat.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libsensors.so.5 $@
+	@cp -L /lib/x86_64-linux-gnu/libdrm_radeon.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libelf.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libdrm_amdgpu.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libdrm_nouveau.so.2 $@
+	@cp -L /lib/x86_64-linux-gnu/libdrm_intel.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libxcb-dri3.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libffi.so.8 $@
+	@cp -L /lib/x86_64-linux-gnu/libedit.so.2 $@
+	@cp -L /lib/x86_64-linux-gnu/libtinfo.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libxml2.so.2 $@
+	@cp -L /lib/x86_64-linux-gnu/libicuuc.so.70 $@
+	@cp -L /lib/x86_64-linux-gnu/libicudata.so.70 $@
+	@cp -L /lib/x86_64-linux-gnu/libXi.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libXext.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libXmu.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libXt.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libXrender.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libX11-xcb.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libxcb-present.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libxcb-xfixes.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libxcb-damage.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libSM.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libICE.so.6 $@
+	@cp -L /lib/x86_64-linux-gnu/libuuid.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libevdev.so.2 $@
+	@cp -L /lib/x86_64-linux-gnu/libinput.so.10 $@
+	@cp -L /lib/x86_64-linux-gnu/libmtdev.so.1 $@
+	@cp -L /lib/x86_64-linux-gnu/libwacom.so.9 $@
+	@cp -L /lib/x86_64-linux-gnu/libgudev-1.0.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libgobject-2.0.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libpcre.so.3 $@
+	@cp -L /lib/x86_64-linux-gnu/libglib-2.0.so.0 $@
+	@cp -L /lib/x86_64-linux-gnu/libXaw.so.7 $@
+	@cp -L /lib/x86_64-linux-gnu/libXpm.so.4 $@
 
 $(VDSO_LIB): | $(VDSO_DIR) $(BINARY_CACHE_DIR)/vdso64.so
 	@# TODO: use a custom compiled vdso.so file in the future.
 	@cp $(BINARY_CACHE_DIR)/vdso64.so $@
-	
+
 $(VDSO_DIR):
 	@mkdir -p $@
 	
@@ -112,12 +188,48 @@ $(INITRAMFS)/sbin:
 $(INITRAMFS)/usr/bin: | $(INITRAMFS)/bin
 	@mkdir -p $@
 	@cp /usr/bin/busybox $@
+	@cp /usr/bin/Xvfb $@
+	@cp /usr/bin/Xorg $@
+	@cp /usr/bin/gtf $@
+	@cp /usr/bin/setxkbmap $@
+	@cp /usr/bin/xkbbell $@
+	@cp /usr/bin/xkbcomp $@
+	@cp /usr/bin/xkbevd $@
+	@cp /usr/bin/xkbprint $@
+	@cp /usr/bin/xkbvleds $@
+	@cp /usr/bin/xkbwatch $@
+	@cp /usr/bin/xeyes $@
+	@cp /usr/bin/fbset $@
+	@cp /usr/bin/xlogo $@
+	@cp /usr/bin/xmessage $@
 
 $(INITRAMFS)/usr/local:
 	@mkdir -p $@
 	@cp -r /usr/local/nginx $@
 	@cp -r /usr/local/redis $@
 	@cp -r /usr/local/memcached $@
+
+$(INITRAMFS)/usr/share:
+	@mkdir -p $@
+	@cp -r /usr/share/fonts $@
+	@cp -r /usr/share/X11 $@
+
+$(INITRAMFS)/etc/X11:
+	@mkdir -p $@
+	@cp -r /etc/X11/xorg.conf.d $@
+
+$(INITRAMFS)/usr/lib:
+	@mkdir -p $@
+	@cp -r /usr/lib/xorg $@
+
+$(INITRAMFS)/usr/lib/x86_64-linux-gnu:
+	@mkdir -p $@
+	@cp -L /usr/lib/x86_64-linux-gnu/libxkbfile.so.1 $@
+	@cp -L /usr/lib/x86_64-linux-gnu/libglapi.so.0 $@
+
+$(INITRAMFS)/usr/lib/x86_64-linux-gnu/dri:
+	@mkdir -p $@
+	@cp -L /usr/lib/x86_64-linux-gnu/dri/swrast_dri.so $@
 
 .PHONY: $(INITRAMFS)/test
 $(INITRAMFS)/test:
