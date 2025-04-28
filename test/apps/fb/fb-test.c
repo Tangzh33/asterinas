@@ -12,6 +12,8 @@
 struct FbVarScreenInfo {
     unsigned int xres;
     unsigned int yres;
+    unsigned int xoffset;
+    unsigned int yoffset;
     unsigned int xres_virtual;
     unsigned int yres_virtual;
     unsigned int bits_per_pixel;

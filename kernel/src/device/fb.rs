@@ -22,6 +22,8 @@ pub struct Fb;
 pub struct FbVarScreenInfo {
     pub xres: u32,
     pub yres: u32,
+    pub xoffset: u32,
+    pub yoffset: u32,
     pub xres_virtual: u32,
     pub yres_virtual: u32,
     pub bits_per_pixel: u32,
@@ -95,9 +97,11 @@ impl FileIo for Fb {
         println!("start to get framebuffer info, addr {:X}, len {:X}, offset {:X}",
                 addr, len, offset);
 
-        //if let Some(framebuffer) = get_framebuffer_info().as_deref() {
+        // if let Some(framebuffer) = get_framebuffer_info().as_deref() {
+
             // Ensure the framebuffer base address is page-aligned
-            let framebuffer_paddr_start = align_down(0x7eab2000 + offset, PAGE_SIZE);
+            // println!("Framebuffer base address: {:X}", framebuffer.io_mem_base());
+            let framebuffer_paddr_start = align_down(0x7e900000 + offset, PAGE_SIZE);
             let framebuffer_paddr_end = align_up(
                 framebuffer_paddr_start + len,
                 PAGE_SIZE,
@@ -126,8 +130,15 @@ impl FileIo for Fb {
     
             while current_paddr < framebuffer_paddr_end {
                 // Create a Frame<dyn AnyFrameMeta> from the physical address
-                let dyn_frame = Frame::from_in_use(current_paddr)
-                    .map_err(|_| Errno::ENOMEM)?; // Handle errors if the frame is not in use
+                // let dyn_frame = Frame::from_in_use(current_paddr)
+                //     .map_err(|_| Errno::ENOMEM)?; // Handle errors if the frame is not in use
+                let dyn_frame = match Frame::from_in_use(current_paddr) {
+                    Ok(frame) => frame,
+                    Err(_) => {
+                        println!("Failed to create frame from physical address");
+                        return_errno!(Errno::ENOMEM);
+                    }
+                };
                 //println!("Got dyn_frame");
                 // Convert the Frame<dyn AnyFrameMeta> to a UFrame
                 let frame = UFrame::try_from(dyn_frame)
@@ -163,6 +174,8 @@ impl FileIo for Fb {
                     let screen_info = FbVarScreenInfo {
                         xres: framebuffer.width() as u32,
                         yres: framebuffer.height() as u32,
+                        xoffset: 0,
+                        yoffset: 0,
                         xres_virtual: framebuffer.width() as u32,
                         yres_virtual: framebuffer.height() as u32,
                         bits_per_pixel: (framebuffer.bytes_per_pixel() * 8) as u32,

@@ -73,6 +73,7 @@ fn framebuffer_init() {
 
     let mut framebuffer = {
         let fb_base = framebuffer_arg.address;
+        log::info!("Framebuffer base address: {:#x}", fb_base);
         let fb_size = framebuffer_arg.width * framebuffer_arg.height * (framebuffer_arg.bpp / 8);
         let io_mem = IoMem::acquire(fb_base..fb_base + fb_size).unwrap();
         let frame = alloc::vec![0; fb_size];
@@ -89,6 +90,7 @@ fn framebuffer_init() {
     framebuffer.clear();
     FRAMEBUFFER.call_once(|| SpinLock::new(framebuffer));
     aster_keyboard::register_callback(&handle_keyboard_input);
+    log::info!("Framebuffer initialized");
 }
 
 impl FrameBuffer {

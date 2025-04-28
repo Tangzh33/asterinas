@@ -133,6 +133,8 @@ $(INITRAMFS)/benchmark/bin:
 	@cp /usr/local/leveldb/benchmark/db_bench_sqlite3 $@
 	@cp /usr/local/benchmark/hackbench $@
 	@cp /usr/local/benchmark/schbench $@
+	@mkdir -p $@/gui
+	@cp /root/tz_utils/aster_gui/framebuffer-tetris/main $@/gui/tetris
 
 # Make necessary directories.
 $(INITRAMFS_EMPTY_DIRS):

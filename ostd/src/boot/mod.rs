@@ -99,6 +99,10 @@ pub(crate) static EARLY_INFO: Once<EarlyBootInfo> = Once::new();
 pub(crate) fn init_after_heap() {
     let boot_time_info = EARLY_INFO.get().unwrap();
 
+    log::debug!("Bootloader: {}", boot_time_info.bootloader_name);
+    log::debug!("Kernel command line: {}", boot_time_info.kernel_cmdline);
+    log::debug!("Framebuffer: {:?}", boot_time_info.framebuffer_arg);
+
     INFO.call_once(|| BootInfo {
         bootloader_name: boot_time_info.bootloader_name.to_string(),
         kernel_cmdline: boot_time_info.kernel_cmdline.to_string(),

@@ -50,7 +50,6 @@ COMMON_QEMU_ARGS="\
     -smp ${SMP:-1} \
     -m ${MEM:-8G} \
     --no-reboot \
-    -nographic \
     -display vnc=0.0.0.0:${VNC_PORT:-42} \
     -serial chardev:mux \
     -monitor chardev:mux \
@@ -60,6 +59,7 @@ COMMON_QEMU_ARGS="\
     -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
     -drive if=none,format=raw,id=x0,file=./test/build/ext2.img \
     -drive if=none,format=raw,id=x1,file=./test/build/exfat.img \
+    -vga none -device ramfb \
 "
 
 if [ "$1" = "iommu" ]; then
