@@ -23,7 +23,7 @@ impl IoMemAllocator {
     /// Acquires the I/O memory access for `range`.
     ///
     /// If the range is not available, then the return value will be `None`.
-    pub fn acquire(&self, range: Range<usize>) -> Option<IoMem> {
+    pub fn acquire(&self, range: Range<usize>, cache: CachePolicy) -> Option<IoMem> {
         find_allocator(&self.allocators, &range)?
             .alloc_specific(&range)
             .ok()?;
@@ -31,7 +31,7 @@ impl IoMemAllocator {
         debug!("Acquiring MMIO range:{:x?}..{:x?}", range.start, range.end);
 
         // SAFETY: The created `IoMem` is guaranteed not to access physical memory or system device I/O.
-        unsafe { Some(IoMem::new(range, PageFlags::RW, CachePolicy::Uncacheable)) }
+        unsafe { Some(IoMem::new(range, PageFlags::RW, cache)) }
     }
 
     /// Recycles an MMIO range.
@@ -146,10 +146,11 @@ mod test {
         let range = vec![0x4000_0000..0x4200_0000];
         let allocator =
             unsafe { IoMemAllocator::new(IoMemAllocatorBuilder::new(range).allocators) };
-        assert!(allocator.acquire(0..0).is_none());
-        assert!(allocator.acquire(0x4000_0000..0x4000_0000).is_none());
-        assert!(allocator.acquire(0x4000_1000..0x4000_0000).is_none());
-        assert!(allocator.acquire(usize::MAX..0).is_none());
+        let cache = crate::mm::CachePolicy::Uncacheable;
+        assert!(allocator.acquire(0..0, cache).is_none());
+        assert!(allocator.acquire(0x4000_0000..0x4000_0000, cache).is_none());
+        assert!(allocator.acquire(0x4000_1000..0x4000_0000, cache).is_none());
+        assert!(allocator.acquire(usize::MAX..0, cache).is_none());
     }
 
     #[ktest]
@@ -162,25 +163,33 @@ mod test {
         let allocator =
             unsafe { IoMemAllocator::new(IoMemAllocatorBuilder::new(range).allocators) };
 
+        let cache = crate::mm::CachePolicy::Uncacheable;
+
         assert!(allocator
-            .acquire((io_mem_region_a.start - 1)..io_mem_region_a.start)
+            .acquire((io_mem_region_a.start - 1)..io_mem_region_a.start, cache)
             .is_none());
         assert!(allocator
-            .acquire(io_mem_region_a.start..(io_mem_region_a.start + 1))
+            .acquire(io_mem_region_a.start..(io_mem_region_a.start + 1), cache)
             .is_some());
 
         assert!(allocator
-            .acquire((io_mem_region_a.end + 1)..(io_mem_region_b.start - 1))
+            .acquire(
+                (io_mem_region_a.end + 1)..(io_mem_region_b.start - 1),
+                cache
+            )
             .is_none());
         assert!(allocator
-            .acquire((io_mem_region_a.end - 1)..(io_mem_region_b.start + 1))
+            .acquire(
+                (io_mem_region_a.end - 1)..(io_mem_region_b.start + 1),
+                cache
+            )
             .is_none());
 
         assert!(allocator
-            .acquire((io_mem_region_a.end - 1)..io_mem_region_a.end)
+            .acquire((io_mem_region_a.end - 1)..io_mem_region_a.end, cache)
             .is_some());
         assert!(allocator
-            .acquire(io_mem_region_a.end..(io_mem_region_a.end + 1))
+            .acquire(io_mem_region_a.end..(io_mem_region_a.end + 1), cache)
             .is_none());
     }
 }

@@ -2,7 +2,7 @@
 
 use alloc::sync::Arc;
 
-use ostd::{boot::boot_info, io::IoMem, mm::VmIo, Result};
+use ostd::{boot::boot_info, io::IoMem, mm::{CachePolicy, VmIo}, Result};
 use spin::Once;
 
 use crate::{Pixel, PixelFormat, RenderedPixel};
@@ -57,7 +57,7 @@ pub(crate) fn init() {
         let fb_size = framebuffer_arg.width
             * framebuffer_arg.height
             * (framebuffer_arg.bpp / u8::BITS as usize);
-        let io_mem = IoMem::acquire(fb_base..fb_base + fb_size).unwrap();
+        let io_mem = IoMem::acquire(fb_base..fb_base + fb_size, CachePolicy::Uncacheable).unwrap();
         FrameBuffer {
             io_mem,
             width: framebuffer_arg.width,

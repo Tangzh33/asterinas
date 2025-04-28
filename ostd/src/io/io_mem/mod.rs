@@ -40,11 +40,11 @@ impl HasPaddr for IoMem {
 
 impl IoMem {
     /// Acquires an `IoMem` instance for the given range.
-    pub fn acquire(range: Range<Paddr>) -> Result<IoMem> {
+    pub fn acquire(range: Range<Paddr>, cache: CachePolicy) -> Result<IoMem> {
         allocator::IO_MEM_ALLOCATOR
             .get()
             .unwrap()
-            .acquire(range)
+            .acquire(range, cache)
             .ok_or(Error::AccessDenied)
     }
 
