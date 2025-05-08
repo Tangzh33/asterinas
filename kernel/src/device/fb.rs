@@ -2,7 +2,7 @@
 
 #![expect(unused_variables)]
 
-pub(crate) use aster_framebuffer::get_framebuffer_info;
+pub(crate) use aster_framebuffer::{get_framebuffer_info, FrameBufferBitfield};
 use ostd::{io::IoMem, Pod};
 
 use super::*;
@@ -19,20 +19,114 @@ pub struct Fb;
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod)]
 pub struct FbVarScreenInfo {
-    pub xres: u32,
+    pub xres: u32, // Visible resolution
     pub yres: u32,
-    pub xres_virtual: u32,
+    pub xres_virtual: u32, // Virtual resolution
     pub yres_virtual: u32,
-    pub bits_per_pixel: u32,
+    pub xoffset: u32, // Offset from virtual to visible
+    pub yoffset: u32,
+    pub bits_per_pixel: u32, // Guess what
+    pub grayscale: u32,      // 0 = color, 1 = grayscale, >1 = FOURCC
+    // Add other fields as needed
+    pub red: FrameBufferBitfield, // Bitfield in framebuffer memory if true color
+    pub green: FrameBufferBitfield, // Else only length is significant
+    pub blue: FrameBufferBitfield,
+    pub transp: FrameBufferBitfield, // Transparency
+    pub nonstd: u32,                 // Non-standard pixel format
+    pub activate: u32,               // See FB_ACTIVATE_*
+    pub height: u32,                 // Height of picture in mm
+    pub width: u32,                  // Width of picture in mm
+    pub accel_flags: u32,            // (OBSOLETE) see fb_info.flags
+    pub pixclock: u32,               // Pixel clock in ps (pico seconds)
+    pub left_margin: u32,            // Time from sync to picture
+    pub right_margin: u32,           // Time from picture to sync
+    pub upper_margin: u32,           // Time from sync to picture
+    pub lower_margin: u32,
+    pub hsync_len: u32,     // Length of horizontal sync
+    pub vsync_len: u32,     // Length of vertical sync
+    pub sync: u32,          // See FB_SYNC_*
+    pub vmode: u32,         // See FB_VMODE_*
+    pub rotate: u32,        // Angle we rotate counter-clockwise
+    pub colorspace: u32,    // Colorspace for FOURCC-based modes
+    pub reserved: [u32; 4], // Reserved for future compatibility
+}
+
+impl Default for FbVarScreenInfo {
+    fn default() -> Self {
+        Self {
+            xres: 0,
+            yres: 0,
+            xres_virtual: 0,
+            yres_virtual: 0,
+            xoffset: 0,
+            yoffset: 0,
+            bits_per_pixel: 0,
+            grayscale: 0,
+            red: FrameBufferBitfield::default(),
+            green: FrameBufferBitfield::default(),
+            blue: FrameBufferBitfield::default(),
+            transp: FrameBufferBitfield::default(),
+            nonstd: 0,
+            activate: 0,
+            height: 0,
+            width: 0,
+            accel_flags: 0,
+            pixclock: 0,
+            left_margin: 0,
+            right_margin: 0,
+            upper_margin: 0,
+            lower_margin: 0,
+            hsync_len: 0,
+            vsync_len: 0,
+            sync: 0,
+            vmode: 0,
+            rotate: 0,
+            colorspace: 0,
+            reserved: [0; 4],
+        }
+    }
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod)]
 pub struct FbFixScreenInfo {
-    pub smem_start: usize, // Start of framebuffer memory
-    pub smem_len: usize,   // Length of framebuffer memory
-    pub line_length: usize, // Length of a line in bytes
-                           // Add other fields as needed
+    pub id: [u8; 16],       // Identification string, e.g., "TT Builtin"
+    pub smem_start: u64,    // Start of framebuffer memory (physical address)
+    pub smem_len: u32,      // Length of framebuffer memory
+    pub type_: u32,         // See FB_TYPE_*
+    pub type_aux: u32,      // Interleave for interleaved planes
+    pub visual: u32,        // See FB_VISUAL_*
+    pub xpanstep: u16,      // Zero if no hardware panning
+    pub ypanstep: u16,      // Zero if no hardware panning
+    pub ywrapstep: u16,     // Zero if no hardware ywrap
+    pub line_length: u32,   // Length of a line in bytes
+    pub mmio_start: u64,    // Start of Memory Mapped I/O (physical address)
+    pub mmio_len: u32,      // Length of Memory Mapped I/O
+    pub accel: u32,         // Indicate to driver which specific chip/card we have
+    pub capabilities: u16,  // See FB_CAP_*
+    pub reserved: [u16; 2], // Reserved for future compatibility
+}
+
+impl Default for FbFixScreenInfo {
+    fn default() -> Self {
+        Self {
+            id: [0; 16],
+            smem_start: 0,
+            smem_len: 0,
+            type_: 0,
+            type_aux: 0,
+            visual: 0,
+            xpanstep: 0,
+            ypanstep: 0,
+            ywrapstep: 0,
+            line_length: 0,
+            mmio_start: 0,
+            mmio_len: 0,
+            accel: 0,
+            capabilities: 0,
+            reserved: [0; 2],
+        }
+    }
 }
 
 impl Device for Fb {
@@ -86,13 +180,28 @@ impl FileIo for Fb {
                 if let Some(framebuffer_guard) = get_framebuffer_info() {
                     let framebuffer = &*framebuffer_guard; // Dereference the guard to access the FrameBuffer
 
-                    let screen_info = FbVarScreenInfo {
-                        xres: framebuffer.width() as u32,
-                        yres: framebuffer.height() as u32,
-                        xres_virtual: framebuffer.width() as u32,
-                        yres_virtual: framebuffer.height() as u32,
-                        bits_per_pixel: (framebuffer.bytes_per_pixel() * 8) as u32,
-                    };
+                    // FIXME: On demand add more fields
+                    let mut screen_info = FbVarScreenInfo::default();
+                    screen_info.xres = framebuffer.width() as u32;
+                    screen_info.yres = framebuffer.height() as u32;
+                    screen_info.xres_virtual = framebuffer.width() as u32;
+                    screen_info.yres_virtual = framebuffer.height() as u32;
+                    screen_info.bits_per_pixel = (8 * framebuffer.bytes_per_pixel()) as u32;
+                    screen_info.red = framebuffer.red();
+                    screen_info.green = framebuffer.green();
+                    screen_info.blue = framebuffer.blue();
+                    screen_info.transp = framebuffer.reserved();
+
+                    // Data are set according to the linux efifb driver
+                    screen_info.pixclock =
+                        10000000 / framebuffer.width() as u32 * 1000 / framebuffer.height() as u32;
+                    screen_info.left_margin = framebuffer.width() as u32 / 8 & 0xf8;
+                    screen_info.right_margin = 32;
+                    screen_info.upper_margin = 16;
+                    screen_info.lower_margin = 4;
+
+                    screen_info.vsync_len = 4;
+                    screen_info.hsync_len = framebuffer.width() as u32 / 8 & 0xf8;
 
                     current_userspace!().write_val(arg, &screen_info)?;
 
@@ -109,13 +218,15 @@ impl FileIo for Fb {
                 if let Some(framebuffer_guard) = get_framebuffer_info() {
                     let framebuffer = &*framebuffer_guard;
 
-                    let screen_info = FbFixScreenInfo {
-                        smem_start: framebuffer.io_mem_base(),
-                        smem_len: framebuffer.width()
-                            * framebuffer.height()
-                            * framebuffer.bytes_per_pixel(),
-                        line_length: framebuffer.width() * framebuffer.bytes_per_pixel(),
-                    };
+                    // FIXME: On demand add more fields
+                    let mut screen_info = FbFixScreenInfo::default();
+                    screen_info.smem_start = framebuffer.io_mem_base() as u64;
+                    screen_info.smem_len = (framebuffer.width()
+                        * framebuffer.height()
+                        * framebuffer.bytes_per_pixel())
+                        as u32;
+                    screen_info.line_length =
+                        (framebuffer.width() * framebuffer.bytes_per_pixel()) as u32;
 
                     current_userspace!().write_val(arg, &screen_info)?;
 
