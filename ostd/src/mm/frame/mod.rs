@@ -308,12 +308,12 @@ impl TryFrom<Frame<dyn AnyFrameMeta>> for UFrame {
     /// If the usage of the frame is not the same as the expected usage, it will
     /// return the dynamic frame itself as is.
     fn try_from(dyn_frame: Frame<dyn AnyFrameMeta>) -> Result<Self, Self::Error> {
-        //if dyn_frame.dyn_meta().is_untyped() {
+        if dyn_frame.dyn_meta().is_untyped() {
             // SAFETY: The metadata is coerceable and the struct is transmutable.
             Ok(unsafe { core::mem::transmute::<Frame<dyn AnyFrameMeta>, UFrame>(dyn_frame) })
-        //} else {
-        //    Err(dyn_frame)
-        //}
+        } else {
+            Err(dyn_frame)
+        }
     }
 }
 

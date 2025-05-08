@@ -4,7 +4,7 @@ use aster_rights::TRights;
 use inherit_methods_macro::inherit_methods;
 
 use super::*;
-use crate::{prelude::*, process::signal::Pollable, vm::perms::VmPerms};
+use crate::{prelude::*, process::signal::Pollable};
 
 impl InodeHandle<Rights> {
     pub fn new(dentry: Dentry, access_mode: AccessMode, status_flags: StatusFlags) -> Result<Self> {
@@ -79,14 +79,7 @@ impl FileLike for InodeHandle<Rights> {
     fn group(&self) -> Result<Gid>;
     fn set_group(&self, gid: Gid) -> Result<()>;
     fn seek(&self, seek_from: SeekFrom) -> Result<usize>;
-    fn mmap(
-        &self,
-        addr: Vaddr,
-        len: usize,
-        offset: usize,
-        perms: VmPerms,
-        ctx: &Context,
-    ) -> Result<Vaddr>;
+    fn get_io_mem(&self) -> Option<IoMem>;
 
     fn read(&self, writer: &mut VmWriter) -> Result<usize> {
         if !self.1.contains(Rights::READ) {

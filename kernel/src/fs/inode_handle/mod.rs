@@ -11,6 +11,7 @@ use core::sync::atomic::{AtomicU32, Ordering};
 
 use aster_rights::Rights;
 use inherit_methods_macro::inherit_methods;
+use ostd::io::IoMem;
 
 use crate::{
     events::IoEvents,
@@ -28,7 +29,6 @@ use crate::{
         signal::{PollHandle, Pollable},
         Gid, Uid,
     },
-    vm::perms::VmPerms,
 };
 
 #[derive(Debug)]
@@ -216,21 +216,12 @@ impl InodeHandle_ {
         self.dentry.inode().ioctl(cmd, arg)
     }
 
-    fn mmap(
-        &self,
-        addr: Vaddr,
-        len: usize,
-        offset: usize,
-        perms: VmPerms,
-        ctx: &Context,
-    ) -> Result<Vaddr> {
-        // If file_io exists, delegate mmap to it
+    fn get_io_mem(&self) -> Option<IoMem> {
         if let Some(ref file_io) = self.file_io {
-            return file_io.mmap(addr, len, offset, perms, ctx);
+            return file_io.get_io_mem();
         }
 
-        // Otherwise, delegate mmap to the inode
-        self.dentry.inode().mmap(addr, len, offset, perms, ctx)
+        None
     }
 
     fn test_range_lock(&self, lock: RangeLockItem) -> Result<RangeLockItem> {
@@ -402,15 +393,13 @@ pub trait FileIo: Pollable + Send + Sync + 'static {
 
     fn write(&self, reader: &mut VmReader) -> Result<usize>;
 
-    fn mmap(
-        &self,
-        addr: Vaddr,
-        len: usize,
-        offset: usize,
-        perms: VmPerms,
-        ctx: &Context,
-    ) -> Result<Vaddr> {
-        return_errno_with_message!(Errno::EINVAL, "mmap is not supported");
+    /// Get the corresponding I/O memory region when the file is a
+    /// memory-mapped device.
+    ///
+    /// If the file is a memory-mapped device, this function
+    /// returns the [`IoMem`], else returns `None`.
+    fn get_io_mem(&self) -> Option<IoMem> {
+        None
     }
 
     fn ioctl(&self, cmd: IoctlCmd, arg: usize) -> Result<i32> {

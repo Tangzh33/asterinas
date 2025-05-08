@@ -26,6 +26,7 @@ pub struct FrameBuffer {
 
 pub static FRAMEBUFFER: Once<Arc<FrameBuffer>> = Once::new();
 
+/// Returns the framebuffer information if available.
 pub fn get_framebuffer_info() -> Option<Arc<FrameBuffer>> {
     FRAMEBUFFER.get().cloned()
 }
@@ -90,6 +91,12 @@ impl FrameBuffer {
     /// Returns the height of the framebuffer in pixels.
     pub fn height(&self) -> usize {
         self.height
+    }
+
+    /// Get the IO memory of the framebuffer.
+    pub fn io_mem(&self) -> &IoMem {
+        // FIXME: Check the correctness of ownership
+        &self.io_mem
     }
 
     /// Returns the physical address of the framebuffer.

@@ -4,13 +4,14 @@
 
 //! Opened File Handle
 
+use ostd::io::IoMem;
+
 use super::inode_handle::InodeHandle;
 use crate::{
     fs::utils::{AccessMode, FallocMode, InodeMode, IoctlCmd, Metadata, SeekFrom, StatusFlags},
     net::socket::Socket,
     prelude::*,
     process::{signal::Pollable, Gid, Uid},
-    vm::perms::VmPerms,
 };
 
 /// The basic operations defined on a file
@@ -48,15 +49,13 @@ pub trait FileLike: Pollable + Send + Sync + Any {
         return_errno_with_message!(Errno::EINVAL, "ioctl is not supported");
     }
 
-    fn mmap(
-        &self,
-        addr: Vaddr,
-        len: usize,
-        offset: usize,
-        perms: VmPerms,
-        ctx: &Context,
-    ) -> Result<Vaddr> {
-        return_errno_with_message!(Errno::EINVAL, "mmap is not supported");
+    /// Get the corresponding I/O memory region when the file is a
+    /// memory-mapped device.
+    ///
+    /// If the file is a memory-mapped device, this function
+    /// returns the [`IoMem`], else returns `None`.
+    fn get_io_mem(&self) -> Option<IoMem> {
+        None
     }
 
     fn resize(&self, new_size: usize) -> Result<()> {
