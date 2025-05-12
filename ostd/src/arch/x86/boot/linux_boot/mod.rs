@@ -109,6 +109,14 @@ fn parse_framebuffer_info(boot_params: &BootParams) -> Option<BootloaderFramebuf
         width: screen_info.lfb_width as usize,
         height: screen_info.lfb_height as usize,
         bpp: screen_info.lfb_depth as usize,
+        red_size: screen_info.red_size as u8,
+        red_pos: screen_info.red_pos as u8,
+        green_size: screen_info.green_size as u8,
+        green_pos: screen_info.green_pos as u8,
+        blue_size: screen_info.blue_size as u8,
+        blue_pos: screen_info.blue_pos as u8,
+        reserved_pos: screen_info.rsvd_pos as u8,
+        reserved_size: screen_info.rsvd_size as u8,
     })
 }
 
