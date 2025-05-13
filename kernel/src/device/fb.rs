@@ -236,6 +236,11 @@ impl FileIo for Fb {
                     return_errno!(Errno::ENODEV); // No such device
                 }
             }
+            IoctlCmd::PUTVSCREENINFO => {
+                // Not support for efifb
+                // Behavior is aligned with Linux
+                Ok(0)
+            }
             IoctlCmd::GETCMAP => {
                 println!("Fb ioctl: Get color map");
                 // Implement logic to get the color map
@@ -247,20 +252,14 @@ impl FileIo for Fb {
                 Ok(0)
             }
             IoctlCmd::PANDISPLAY => {
-                println!("Fb ioctl: Pan display");
-                let offset = arg; // Assume `arg` contains the offset value
-                println!("Panning display to offset: {}", offset);
-
-                // Implement logic to pan the display
-                Ok(0)
+                // Not support for efifb
+                // Behavior is aligned with Linux
+                return_errno!(Errno::EINVAL);
             }
             IoctlCmd::FBIOBLANK => {
-                println!("Fb ioctl: Blank screen");
-                let blank_mode = arg; // Assume `arg` contains the blank mode
-                println!("Setting blank mode to: {}", blank_mode);
-
-                // Implement logic to blank the screen
-                Ok(0)
+                // Not support for efifb
+                // Behavior is aligned with Linux
+                return_errno!(Errno::EINVAL);
             }
             _ => {
                 println!("Fb ioctl: Unsupported command -> {:?}", cmd);
