@@ -43,18 +43,60 @@ pub enum IoctlCmd {
     TIOCGPTPEER = 0x40045441,
     /// Get tdx report using TDCALL
     TDXGETREPORT = 0xc4405401,
-    /// Equivalent to FBIOGET_VSCREENINFO
-    GETVSCREENINFO = 0x4600,
-    /// Equivalent to FBIOPUT_VSCREENINFO
-    PUTVSCREENINFO = 0x4601,
-    /// Equivalent to FBIOGET_FSCREENINFO
-    GETFSCREENINFO = 0x4602,
-    /// Equivalent to FBIOGETCMAP
-    GETCMAP = 0x4604,
-    /// Equivalent to FBIOPUTCMAP
-    PUTCMAP = 0x4605,
-    /// Equivalent to FBIOPAN_DISPLAY
-    PANDISPLAY = 0x4606,
-    /// Equivalent to FBIOBLANK
+    /// Get variable screen information (resolution, pixel format, etc.)
+    ///
+    /// Args(arg: usize):
+    /// - A pointer to a [`FbVarScreenInfo`] structure
+    /// - Output-only
+    /// - Kernel fills the struct with current variable screen settings
+    FBIOGETVSCREENINFO = 0x4600,
+    /// Set variable screen information (adjust display parameters)
+    ///
+    /// Args(arg: usize):
+    /// - A pointer to a [`FbVarScreenInfo`] structure
+    /// - **Both** input and output
+    /// - Input: user-provided settings
+    /// - Output: kernel returns updated/validated settings
+    FBIOPUTVSCREENINFO = 0x4601,
+    /// Get fixed/static screen information (memory layout, driver name)
+    ///
+    /// Args(arg: usize):
+    /// - A pointer to a [`FbFixScreenInfo`] structure
+    /// - Output-only
+    /// - Kernel provides unchangeable hardware/driver details
+    FBIOGETFSCREENINFO = 0x4602,
+    /// Get color palette (color map) from the framebuffer
+    ///
+    /// Args(arg: usize):
+    /// - A pointer to a [`FbCmap`] structure
+    /// - Output-only
+    /// - Kernel writes current color map data into the struct
+    FBIOGETCMAP = 0x4604,
+    /// Set color palette (color map) for the framebuffer
+    ///
+    /// Args(arg: usize):
+    /// - A pointer to a [`FbCmap`] structure
+    /// - Input-only
+    /// - Kernel applies the provided map
+    FBIOPUTCMAP = 0x4605,
+    /// Pan or wrap the visible portion of the display buffer
+    ///
+    /// Args(arg: usize):
+    /// - A pointer to a [`FbVarScreenInfo`] structure
+    /// - **Both** input and output
+    /// - Input: new panning offsets
+    /// - Output: kernel returns adjusted offsets
+    FBIOPANDISPLAY = 0x4606,
+    /// Blank or unblank the screen (turn display on/off)
+    ///
+    /// Args(arg: usize):
+    /// - An Int value representing the blanking mode
+    ///   - 0: screen: unblanked, hsync: on,  vsync: on
+    ///   - 1: screen: blanked,   hsync: on,  vsync: on
+    ///   - 2: screen: blanked,   hsync: on,  vsync: off
+    ///   - 3: creen: blanked,   hsync: off, vsync: on
+    ///   - 4: screen: blanked,   hsync: off, vsync: off
+    /// - Input-only
+    /// - Kernel uses the value to control the display state
     FBIOBLANK = 0x4611,
 }

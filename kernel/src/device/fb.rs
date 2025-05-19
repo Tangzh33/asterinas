@@ -151,6 +151,66 @@ impl Pollable for Fb {
     }
 }
 
+impl Fb {
+    /// Get variable screen information (resolution, pixel format, etc.)
+    fn get_fix_info(&self, arg: usize) -> Result<i32> {
+        if let Some(framebuffer_guard) = get_framebuffer_info() {
+            let framebuffer = &*framebuffer_guard;
+
+            // TODO: Set more fields on demand
+            let mut screen_info = FbFixScreenInfo::default();
+            screen_info.smem_start = framebuffer.io_mem_base() as u64;
+            screen_info.smem_len =
+                (framebuffer.width() * framebuffer.height() * framebuffer.bytes_per_pixel()) as u32;
+            screen_info.line_length = (framebuffer.width() * framebuffer.bytes_per_pixel()) as u32;
+
+            current_userspace!().write_val(arg, &screen_info)?;
+
+            Ok(0)
+        } else {
+            println!("Framebuffer is not initialized");
+            return_errno!(Errno::ENODEV); // No such device
+        }
+    }
+
+    /// Get fixed/static screen information (memory layout, driver name)
+    fn get_var_info(&self, arg: usize) -> Result<i32> {
+        if let Some(framebuffer_guard) = get_framebuffer_info() {
+            let framebuffer = &*framebuffer_guard; // Dereference the guard to access the FrameBuffer
+
+            // TODO: Set more fields on demand
+            let mut screen_info = FbVarScreenInfo::default();
+            screen_info.xres = framebuffer.width() as u32;
+            screen_info.yres = framebuffer.height() as u32;
+            screen_info.xres_virtual = framebuffer.width() as u32;
+            screen_info.yres_virtual = framebuffer.height() as u32;
+            screen_info.bits_per_pixel = (8 * framebuffer.bytes_per_pixel()) as u32;
+            screen_info.red = framebuffer.red();
+            screen_info.green = framebuffer.green();
+            screen_info.blue = framebuffer.blue();
+            screen_info.transp = framebuffer.reserved();
+
+            // Data are set according to the linux efifb driver
+            screen_info.pixclock =
+                10000000 / framebuffer.width() as u32 * 1000 / framebuffer.height() as u32;
+            screen_info.left_margin = framebuffer.width() as u32 / 8 & 0xf8;
+            screen_info.right_margin = 32;
+            screen_info.upper_margin = 16;
+            screen_info.lower_margin = 4;
+
+            screen_info.vsync_len = 4;
+            screen_info.hsync_len = framebuffer.width() as u32 / 8 & 0xf8;
+
+            current_userspace!().write_val(arg, &screen_info)?;
+
+            Ok(0)
+        } else {
+            println!("Framebuffer is not initialized");
+            return_errno!(Errno::ENODEV); // No such device
+        }
+    }
+}
+
 impl FileIo for Fb {
     fn read(&self, _writer: &mut VmWriter) -> Result<usize> {
         println!("Fb read");
@@ -173,92 +233,37 @@ impl FileIo for Fb {
 
     fn ioctl(&self, cmd: IoctlCmd, arg: usize) -> Result<i32> {
         match cmd {
-            IoctlCmd::GETVSCREENINFO => {
+            IoctlCmd::FBIOGETVSCREENINFO => {
                 println!("Fb ioctl: Get virtual screen info");
-
-                // Use get_framebuffer_info to access the framebuffer
-                if let Some(framebuffer_guard) = get_framebuffer_info() {
-                    let framebuffer = &*framebuffer_guard; // Dereference the guard to access the FrameBuffer
-
-                    // FIXME: On demand add more fields
-                    let mut screen_info = FbVarScreenInfo::default();
-                    screen_info.xres = framebuffer.width() as u32;
-                    screen_info.yres = framebuffer.height() as u32;
-                    screen_info.xres_virtual = framebuffer.width() as u32;
-                    screen_info.yres_virtual = framebuffer.height() as u32;
-                    screen_info.bits_per_pixel = (8 * framebuffer.bytes_per_pixel()) as u32;
-                    screen_info.red = framebuffer.red();
-                    screen_info.green = framebuffer.green();
-                    screen_info.blue = framebuffer.blue();
-                    screen_info.transp = framebuffer.reserved();
-
-                    // Data are set according to the linux efifb driver
-                    screen_info.pixclock =
-                        10000000 / framebuffer.width() as u32 * 1000 / framebuffer.height() as u32;
-                    screen_info.left_margin = framebuffer.width() as u32 / 8 & 0xf8;
-                    screen_info.right_margin = 32;
-                    screen_info.upper_margin = 16;
-                    screen_info.lower_margin = 4;
-
-                    screen_info.vsync_len = 4;
-                    screen_info.hsync_len = framebuffer.width() as u32 / 8 & 0xf8;
-
-                    current_userspace!().write_val(arg, &screen_info)?;
-
-                    Ok(0)
-                } else {
-                    println!("Framebuffer is not initialized");
-                    return_errno!(Errno::ENODEV); // No such device
-                }
+                self.get_var_info(arg)
             }
-            IoctlCmd::GETFSCREENINFO => {
-                println!("Fb ioctl: Get fixed screen info");
-
-                // Use get_framebuffer_info to access the framebuffer
-                if let Some(framebuffer_guard) = get_framebuffer_info() {
-                    let framebuffer = &*framebuffer_guard;
-
-                    // FIXME: On demand add more fields
-                    let mut screen_info = FbFixScreenInfo::default();
-                    screen_info.smem_start = framebuffer.io_mem_base() as u64;
-                    screen_info.smem_len = (framebuffer.width()
-                        * framebuffer.height()
-                        * framebuffer.bytes_per_pixel())
-                        as u32;
-                    screen_info.line_length =
-                        (framebuffer.width() * framebuffer.bytes_per_pixel()) as u32;
-
-                    current_userspace!().write_val(arg, &screen_info)?;
-
-                    Ok(0)
-                } else {
-                    println!("Framebuffer is not initialized");
-                    return_errno!(Errno::ENODEV); // No such device
-                }
-            }
-            IoctlCmd::PUTVSCREENINFO => {
+            IoctlCmd::FBIOPUTVSCREENINFO => {
                 // Not support for efifb
-                // Behavior is aligned with Linux
-                Ok(0)
+                // Behavior is aligned with Linux's efifb
+                self.get_var_info(arg)
             }
-            IoctlCmd::GETCMAP => {
+            IoctlCmd::FBIOGETFSCREENINFO => {
+                println!("Fb ioctl: Get fixed screen info");
+                self.get_fix_info(arg)
+            }
+            IoctlCmd::FBIOGETCMAP => {
                 println!("Fb ioctl: Get color map");
                 // Implement logic to get the color map
                 Ok(0)
             }
-            IoctlCmd::PUTCMAP => {
+            IoctlCmd::FBIOPUTCMAP => {
                 println!("Fb ioctl: Set color map");
                 // Implement logic to set the color map
                 Ok(0)
             }
-            IoctlCmd::PANDISPLAY => {
+            IoctlCmd::FBIOPANDISPLAY => {
                 // Not support for efifb
-                // Behavior is aligned with Linux
+                // Behavior is aligned with Linux's efifb
                 return_errno!(Errno::EINVAL);
             }
             IoctlCmd::FBIOBLANK => {
                 // Not support for efifb
-                // Behavior is aligned with Linux
+                // Behavior is aligned with Linux's efifb
                 return_errno!(Errno::EINVAL);
             }
             _ => {
