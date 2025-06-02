@@ -107,6 +107,7 @@ fn init() {
     sched::init();
     process::init();
     fs::init();
+    vm::shared_mem::init();
 }
 
 fn init_in_first_kthread(fs_resolver: &FsResolver) {
