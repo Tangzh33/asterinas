@@ -814,6 +814,7 @@ pub struct VmarMapOptions<'a, R1, R2> {
     parent: &'a Vmar<R1>,
     vmo: Option<Vmo<R2>>,
     mappable: Option<Mappable>,
+    shared_mem_id: Option<u64>,
     perms: VmPerms,
     vmo_offset: usize,
     size: usize,
@@ -838,6 +839,7 @@ impl<'a, R1, R2> VmarMapOptions<'a, R1, R2> {
             parent,
             vmo: None,
             mappable: None,
+            shared_mem_id: None,
             perms,
             vmo_offset: 0,
             size,
@@ -875,6 +877,12 @@ impl<'a, R1, R2> VmarMapOptions<'a, R1, R2> {
         }
         self.vmo = Some(vmo);
 
+        self
+    }
+
+    /// Binds a shared memory object to the mapping.
+    pub fn shared_mem_id(mut self, shmid: u64) -> Self {
+        self.shared_mem_id = Some(shmid);
         self
     }
 
@@ -991,6 +999,7 @@ where
             parent,
             vmo,
             mappable,
+            shared_mem_id,
             perms,
             vmo_offset,
             size: map_size,
@@ -1065,7 +1074,7 @@ where
         };
 
         // Build the mapping.
-        let vm_mapping = VmMapping::new(
+        let mut vm_mapping = VmMapping::new(
             NonZeroUsize::new(map_size).unwrap(),
             map_to_addr,
             mapped_mem,
@@ -1084,6 +1093,8 @@ where
         if let Some(io_mem) = io_mem {
             vm_mapping.populate_device(parent.vm_space(), io_mem, vmo_offset)?;
         }
+
+        vm_mapping.set_shared_mem(shared_mem_id);
 
         // Add the mapping to the VMAR.
         inner.insert_try_merge(vm_mapping);
@@ -1122,7 +1133,6 @@ where
         let Some(vmo) = &self.vmo else {
             return Ok(());
         };
-
         let perm_rights = Rights::from(self.perms);
         vmo.check_rights(perm_rights)
     }
