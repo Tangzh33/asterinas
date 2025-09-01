@@ -10,3 +10,6 @@ mount -t cgroup2 none /sys/fs/cgroup
 mount -t configfs none /sys/kernel/config
 mount -t ext2 /dev/vda /ext2
 mount -t exfat /dev/vdb /exfat
+
+/usr/bin/run_as_xfce.sh
+
