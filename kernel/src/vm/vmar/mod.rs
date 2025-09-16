@@ -14,9 +14,10 @@ use aster_rights::Rights;
 use ostd::{
     cpu::CpuId,
     mm::{
+        io_util::HasVmReaderWriter,
         tlb::TlbFlushOp,
         vm_space::{CursorMut, VmQueriedItem},
-        CachePolicy, PageFlags, PageProperty, VmSpace, MAX_USERSPACE_VADDR,
+        CachePolicy, PageFlags, PageProperty, UFrame, VmSpace, MAX_USERSPACE_VADDR,
     },
     sync::RwMutexReadGuard,
     task::disable_preempt,
@@ -82,6 +83,14 @@ impl<R> Vmar<R> {
     /// FIXME: This function should require access control
     pub fn vm_space(&self) -> &Arc<VmSpace> {
         self.0.vm_space()
+    }
+
+    pub fn read_maybe_remote(&self, vaddr: Vaddr, writer: &mut VmWriter) -> Result<usize> {
+        self.0.read_maybe_remote(vaddr, writer)
+    }
+
+    pub fn write_maybe_remote(&self, vaddr: Vaddr, reader: &mut VmReader) -> Result<usize> {
+        self.0.write_maybe_remote(vaddr, reader)
     }
 
     /// Resizes the original mapping.
@@ -685,6 +694,103 @@ impl Vmar_ {
         &self.vm_space
     }
 
+    fn read_maybe_remote(&self, vaddr: Vaddr, writer: &mut VmWriter) -> Result<usize> {
+        let len = writer.avail();
+        let read = |frame: UFrame, skip_offset: usize| {
+            let mut reader = frame.reader();
+            reader.skip(skip_offset);
+            let read_bytes = reader.read_fallible(writer)?;
+
+            Ok(read_bytes)
+        };
+
+        self.access_maybe_remote(vaddr, len, PageFlags::R, read)
+    }
+
+    fn write_maybe_remote(&self, vaddr: Vaddr, reader: &mut VmReader) -> Result<usize> {
+        let len = reader.remain();
+        let write = |frame: UFrame, skip_offset: usize| {
+            let mut writer = frame.writer();
+            writer.skip(skip_offset);
+            let written_bytes = writer.write_fallible(reader)?;
+
+            Ok(written_bytes)
+        };
+
+        self.access_maybe_remote(vaddr, len, PageFlags::W, write)
+    }
+
+    fn access_maybe_remote<F>(
+        &self,
+        vaddr: Vaddr,
+        len: usize,
+        required_page_flags: PageFlags,
+        mut op: F,
+    ) -> Result<usize>
+    where
+        F: FnMut(UFrame, usize) -> Result<usize>,
+    {
+        let range = {
+            let Some(end) = vaddr.checked_add(len) else {
+                return_errno_with_message!(Errno::EINVAL, "address overflow");
+            };
+            let range = vaddr.align_down(PAGE_SIZE)..end.align_up(PAGE_SIZE);
+            if !is_userspace_vaddr(range.start) || !is_userspace_vaddr(range.end - 1) {
+                return_errno_with_message!(Errno::EINVAL, "invalid user space address");
+            }
+            range
+        };
+
+        let preempt_guard = disable_preempt();
+        let vmspace = self.vm_space();
+        let mut cursor = vmspace.cursor(&preempt_guard, &range)?;
+        let mut current_va = range.start;
+        let mut bytes = 0;
+
+        while current_va < range.end {
+            cursor.jump(current_va)?;
+            let (_, mut item) = cursor.query()?;
+
+            if item
+                .as_ref()
+                .is_none_or(|item| !item.prop().flags.contains(required_page_flags))
+            {
+                drop(cursor);
+                let page_fault_info = PageFaultInfo {
+                    address: current_va,
+                    required_perms: required_page_flags.into(),
+                };
+                self.handle_page_fault(&page_fault_info)?;
+                cursor = vmspace.cursor(&preempt_guard, &(current_va..range.end))?;
+                (_, item) = cursor.query()?;
+            }
+
+            let item = item.unwrap();
+            debug_assert!(item.prop().flags.contains(required_page_flags));
+
+            match item {
+                VmQueriedItem::MappedRam { frame, .. } => {
+                    let skip_offset = if current_va == range.start {
+                        vaddr - range.start
+                    } else {
+                        0
+                    };
+                    bytes += op(frame, skip_offset)?;
+                }
+                VmQueriedItem::MappedIoMem { .. } => {
+                    return_errno_with_message!(
+                        Errno::EOPNOTSUPP,
+                        "Accessing remote MMIO memory is not supported currently"
+                    );
+                }
+            }
+
+            current_va += PAGE_SIZE;
+        }
+
+        Ok(bytes)
+    }
+
     pub(super) fn new_fork_root(self: &Arc<Self>) -> Result<Arc<Self>> {
         let new_vmar_ = Vmar_::new_root();
 
@@ -718,7 +824,9 @@ impl Vmar_ {
                 rss_delta.add(vm_mapping.rss_type(), num_copied as isize);
             }
 
-            cur_cursor.flusher().issue_tlb_flush(TlbFlushOp::for_all());
+            cur_cursor
+                .flusher()
+                .issue_tlb_flush(TlbFlushOp::for_all(), &cur_vmspace);
             cur_cursor.flusher().dispatch_tlb_flush();
             cur_cursor.flusher().sync_tlb_flush();
         }

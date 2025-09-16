@@ -216,6 +216,10 @@ impl VmSpace {
         }
         None
     }
+
+    pub(crate) fn page_table_paddr(&self) -> Paddr {
+        self.pt.root_paddr()
+    }
 }
 
 /// The cursor for querying over the VM space without modifying it.
@@ -429,7 +433,7 @@ impl<'a> CursorMut<'a> {
                         // as a whole, but the frames handled here might be one
                         // segment of it.
                         self.flusher
-                            .issue_tlb_flush(TlbFlushOp::for_single(start_va));
+                            .issue_tlb_flush(TlbFlushOp::for_single(start_va), self.vmspace);
                     }
                 }
                 self.flusher.dispatch_tlb_flush();
@@ -488,7 +492,8 @@ impl<'a> CursorMut<'a> {
                             // corresponding `IoMem`. This is because we manage
                             // the range of I/O as a whole, but the frames
                             // handled here might be one segment of it.
-                            self.flusher.issue_tlb_flush(TlbFlushOp::for_single(va));
+                            self.flusher
+                                .issue_tlb_flush(TlbFlushOp::for_single(va), self.vmspace);
                         }
                     }
                 }
@@ -579,6 +584,16 @@ pub enum VmQueriedItem {
         /// The property of the slot.
         prop: PageProperty,
     },
+}
+
+impl VmQueriedItem {
+    /// The property of the mapped item.
+    pub fn prop(&self) -> &PageProperty {
+        match self {
+            Self::MappedRam { prop, .. } => prop,
+            Self::MappedIoMem { prop, .. } => prop,
+        }
+    }
 }
 
 /// Internal representation of a VM item.

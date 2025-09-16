@@ -14,10 +14,11 @@ use super::{
     Vaddr, PAGE_SIZE,
 };
 use crate::{
-    arch::irq,
+    arch::{irq, mm::current_page_table_paddr},
     const_assert,
     cpu::{AtomicCpuSet, CpuSet, PinCurrentCpu},
     cpu_local,
+    mm::VmSpace,
     sync::{LocalIrqDisabled, SpinLock},
 };
 
@@ -53,8 +54,10 @@ impl<'a, G: PinCurrentCpu> TlbFlusher<'a, G> {
     /// This function does not guarantee to flush the TLB entries on either
     /// this CPU or remote CPUs. The flush requests are only performed when
     /// [`Self::dispatch_tlb_flush`] is called.
-    pub fn issue_tlb_flush(&mut self, op: TlbFlushOp) {
-        self.ops_stack.push(op, None);
+    pub fn issue_tlb_flush(&mut self, op: TlbFlushOp, vm_space: &VmSpace) {
+        if current_page_table_paddr() == vm_space.page_table_paddr() {
+            self.ops_stack.push(op, None);
+        }
     }
 
     /// Issues a TLB flush request that must happen before dropping the page.
