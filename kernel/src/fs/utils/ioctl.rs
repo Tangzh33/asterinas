@@ -7,6 +7,10 @@ use crate::prelude::*;
 #[derive(Debug, Clone, Copy, TryFromInt)]
 // #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IoctlCmd {
+    /// Get console mode
+    KDGETMODE = 0x4B3B,
+    /// Set console mode
+    KDSETMODE = 0x4B3A,
     /// Get terminal attributes
     TCGETS = 0x5401,
     TCSETS = 0x5402,

@@ -3,8 +3,9 @@
 use alloc::{sync::Arc, vec::Vec};
 use core::ops::Deref;
 
-use aster_console::{AnyConsoleDevice, BitmapFont, ConsoleCallback, ConsoleSetFontError};
+use aster_console::{AnyConsoleDevice, BitmapFont, ConsoleCallback, ConsoleMode, ConsoleSetFontError};
 use aster_i8042_controller::InputKey;
+
 use ostd::{
     mm::VmReader,
     sync::{LocalIrqDisabled, SpinLock},
@@ -42,6 +43,10 @@ impl AnyConsoleDevice for FramebufferConsole {
         let mut inner = self.inner.lock();
         let (state, esc_fsm) = &mut *inner;
 
+        if state.mode == ConsoleMode::Graphics {
+            return;
+        }
+
         for byte in buf {
             if esc_fsm.eat(*byte, state) {
                 // The character is part of an ANSI escape sequence.
@@ -64,6 +69,19 @@ impl AnyConsoleDevice for FramebufferConsole {
     fn register_callback(&self, callback: &'static ConsoleCallback) {
         self.callbacks.lock().push(callback);
     }
+
+    fn set_mode(&self, mode: ConsoleMode) -> bool {
+        let mut inner = self.inner.lock();
+        let (state, _) = &mut *inner;
+        state.mode = mode;
+        true
+    }
+
+    fn get_mode(&self) -> Option<ConsoleMode> {
+        let inner = self.inner.lock();
+        let (state, _) = &*inner;
+        Some(state.mode)
+    }
 }
 
 impl FramebufferConsole {
@@ -77,6 +95,7 @@ impl FramebufferConsole {
             font: BitmapFont::new_basic8x8(),
             bytes: alloc::vec![0u8; framebuffer.size()],
             backend: framebuffer,
+            mode: ConsoleMode::Text,
         };
 
         let esc_fsm = EscapeFsm::new();
@@ -103,6 +122,7 @@ struct ConsoleState {
     font: BitmapFont,
     bytes: Vec<u8>,
     backend: Arc<FrameBuffer>,
+    mode: ConsoleMode,
 }
 
 impl ConsoleState {
