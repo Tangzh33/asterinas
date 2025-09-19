@@ -63,17 +63,30 @@ impl FsResolver {
         let mut lookup_ctx = LookupCtx::new(follow_tail_link, stop_on_parent);
 
         let lookup_res = self.lookup_inner(path, &mut lookup_ctx);
-
+        
         let inode_handle = match lookup_res {
             Ok(target_path) => self.open_existing_file(target_path, &open_args)?,
             Err(e)
                 if e.error() == Errno::ENOENT
                     && open_args.creation_flags.contains(CreationFlags::O_CREAT) =>
             {
-                let parent_dentry = lookup_ctx.parent().unwrap().clone();
-                let tail_file_name = lookup_ctx.tail_file_name().unwrap().clone();
+                // Create the file first - this is the primary operation
                 let inode_handle = self.create_new_file(&open_args, &mut lookup_ctx)?;
-                fsnotify_create(&parent_dentry, tail_file_name)?;
+                
+                // Try to send fsnotify event - this is secondary/best-effort
+                match (lookup_ctx.parent(), lookup_ctx.tail_file_name()) {
+                    (Some(parent_dentry), Some(tail_file_name)) => {
+                        if let Err(e) = fsnotify_create(parent_dentry, tail_file_name) {
+                            // Log the failure but don't fail the file creation
+                            println!("Failed to send fsnotify_create event");
+                        }
+                    }
+                    _ => {
+                        // Parent or filename not available - this shouldn't happen normally
+                        println!("Cannot send fsnotify_create: parent or filename not available for path {:?}", path);
+                    }
+                }
+                
                 inode_handle
             }
             Err(e) => return Err(e),
