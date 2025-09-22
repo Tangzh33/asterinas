@@ -6,6 +6,7 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use bitflags::bitflags;
 use hashbrown::HashMap;
 use ostd::{mm::VmWriter, sync::Mutex};
+use core::any::Any;
 
 use crate::{
     current_userspace,
@@ -150,28 +151,64 @@ impl InotifyFile {
     }
 }
 
+fn can_merge_events(existing: &InotifyEvent, new: &InotifyEvent) -> bool {
+        // Same watch descriptor and file
+        existing.wd == new.wd &&
+        existing.name == new.name &&
+        // Same event type (e.g., both MODIFY)
+        existing.mask == new.mask &&
+        // Some events can be merged, others cannot
+        is_mergeable_event_type(new.mask)
+}
+
+fn is_mergeable_event_type(mask: u32) -> bool {
+        // These events can be merged:
+        mask & (InotifyMask::IN_MODIFY.bits() |
+                InotifyMask::IN_ATTRIB.bits() |
+                InotifyMask::IN_ACCESS.bits()) != 0
+        // These events should NOT be merged:
+        // - IN_CREATE (each creation is distinct)
+        // - IN_DELETE (each deletion is distinct) 
+        // - IN_MOVED_FROM/TO (move operations are distinct)
+}
+
+fn merge_events_in_place(notifications: &mut Vec<Arc<dyn FsnotifyEvent>>, new_event: InotifyEvent) {
+        // Replace the last event with the new one (effectively merging)
+        // Or update timestamps, or combine information as needed
+        if let Some(last) = notifications.pop() {
+            // For simple merging, just keep the newer event
+            notifications.push(Arc::new(new_event));
+        }
+}
+
 impl FsnotifyGroup for InotifyFile {
     fn send_event(&self, mark: &Arc<dyn FsnotifyMark>, mask: u32, name: String) {
         let wd = mark.downcast_ref::<InotifyMark>().unwrap().wd();
-        let mark_mask = mark
-            .downcast_ref::<InotifyMark>()
-            .unwrap()
-            .inner
-            .lock()
-            .mask;
+        let mark_mask = mark.downcast_ref::<InotifyMark>().unwrap().inner.lock().mask;
+        
         if mark_mask & mask == 0 && mask != InotifyMask::IN_IGNORED.bits() {
             return;
         }
-        let event = Arc::new(InotifyEvent::new(
-            mask,
-            wd,
-            0,
-            (name.len() + 1) as u32,
-            name,
-        ));
-        // TODO: inotify merge event
-        self.notifications.write().push(event);
-        // New event makes the file readable
+        
+        let new_event = InotifyEvent::new(mask, wd, 0, (name.len() + 1) as u32, name.clone());
+        
+        // Try to merge with existing events
+        let mut notifications = self.notifications.write();
+        
+        // Check if we can merge with the last event
+        if let Some(last_event) = notifications.last() {
+            if let Some(last_inotify_event) = (last_event.as_ref() as &dyn Any).downcast_ref::<InotifyEvent>() {
+                if can_merge_events(last_inotify_event, &new_event) {
+                    merge_events_in_place(&mut notifications, new_event);
+                    drop(notifications);
+                    self.pollee.notify(IoEvents::IN);
+                    return;
+                }
+            }
+        }
+        // Can't merge, add new event
+        notifications.push(Arc::new(new_event));
+        drop(notifications); // Release lock
         self.pollee.notify(IoEvents::IN);
     }
 
@@ -221,11 +258,38 @@ impl FileLike for InotifyFile {
         }
 
         let mut size = 0;
-        while let Some(event) = self.pop_event() {
-            size += event.copy_to_user(writer)?;
+        let mut consumed_events = 0;
+        loop {
+            let event = match self.pop_event() {
+                Some(event) => event,
+                None => break,
+            };
+
+            match event.copy_to_user(writer) {
+                Ok(event_size) => {
+                    size += event_size;
+                    consumed_events += 1;
+                }
+                Err(e) => {
+                    // Put the failed event back at the front
+                    self.notifications.write().insert(0, event);
+                    println!("[inotify] read: partial read, returning size {}", size);
+                    if consumed_events == 0 {
+                        return Err(e); // No events consumed, return error
+                    }
+                    break; // Some events consumed, return partial success
+                }
+            }
         }
-        // Events drained; invalidate cached readiness
-        self.pollee.invalidate();
+  
+        // Check if new events arrived during processing
+        let remaining_count = self.notifications.read().len();
+        if remaining_count > 0 {
+            self.pollee.notify(IoEvents::IN);
+        } else {
+            self.pollee.invalidate();
+        }
+        
         Ok(size)
     }
 
