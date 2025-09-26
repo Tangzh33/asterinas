@@ -78,7 +78,7 @@ impl InputDevice for I8042Keyboard {
 }
 
 pub fn handle_keyboard_input(_trap_frame: &TrapFrame) {
-    log::error!("-----This is new handle_keyboard_input in kernel/comps/i8042_controller/src/i8042_keyboard.rs");
+    //log::error!("-----This is new handle_keyboard_input in kernel/comps/i8042_controller/src/i8042_keyboard.rs");
     let (key, scancode, status) = parse_inputkey();
 
     // Get the current time in microseconds

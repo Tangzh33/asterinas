@@ -163,7 +163,7 @@ impl Status {
 }
 
 fn parse_input_packet(packet: [u8; 3]) -> MousePacket {
-    log::error!("This is parse_input_packet in kernel/comps/mouse/src/i8042_mouse.rs packet: {:?}", packet);
+    //log::error!("This is parse_input_packet in kernel/comps/mouse/src/i8042_mouse.rs packet: {:?}", packet);
 
     let byte0 = packet[0];
     let byte1 = packet[1];
