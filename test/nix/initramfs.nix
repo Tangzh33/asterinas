@@ -20,7 +20,9 @@ let
          xfce.xfdesktop      # 桌面 (必需)
          pkgs.xfce.xfce4-panel # 面板 (必需)
          pkgs.xfce.xfce4-terminal # 终端 (必需)
-         # 移除了: thunar, mousepad, xfce4-appfinder, xfce4-settings, tumbler
+         pkgs.xfce.thunar    # 文件管理器 (已添加)
+         pkgs.xfce.xfce4-settings # 设置管理器 (新增)
+         # 移除了: mousepad, xfce4-appfinder, tumbler
        ]
     ++ lib.optionals (xorg != null) [
          xorg.xtrans
@@ -267,9 +269,30 @@ EOF
 
       # 移除 Tumbler (缩略图生成器，非必需)
 
-      # 移除 Thunar 文件管理器 (可以用终端管理文件)
+      # Thunar 文件管理器 (重新添加)
+      thunar_mappings="bin:$out/usr/bin etc:$out/etc share:$out/usr/share"
+      process_package_mappings "${pkgs.xfce.thunar}" "$thunar_mappings" "Thunar"
 
-      # 移除 XFCE4 Settings Manager (可选)
+      # Configure Thunar as default file manager
+      mkdir -p $out/usr/share/applications
+      cat > $out/usr/share/applications/mimeapps.list << 'EOF'
+[Default Applications]
+inode/directory=thunar.desktop
+application/x-directory=thunar.desktop
+x-directory/normal=thunar.desktop
+
+[Added Associations]
+inode/directory=thunar.desktop;
+application/x-directory=thunar.desktop;
+EOF
+
+      # Also create system-wide associations
+      mkdir -p $out/etc/xdg
+      cp $out/usr/share/applications/mimeapps.list $out/etc/xdg/mimeapps.list
+
+      # XFCE4 Settings Manager (重新添加)
+      settings_mappings="bin:$out/usr/bin etc:$out/etc share:$out/usr/share"
+      process_package_mappings "${pkgs.xfce.xfce4-settings}" "$settings_mappings" "XFCE4-Settings"
 
       # XFCE4 Terminal (保留，必需)
       terminal_mappings="bin:$out/usr/bin share:$out/usr/share"
@@ -369,13 +392,13 @@ EOF
           # Install scripts
           cp ${./scripts/run_as_xfce.sh} $out/usr/bin/run_as_xfce.sh
 
-          # Install fonts (精简版)
+          # Install fonts (增强版)
           fontconfig_mappings="bin:$out/usr/bin etc:$out/etc share:$out/usr/share"
           process_package_mappings "${pkgs.fontconfig}" "$fontconfig_mappings" "FontConfig"
 
-          # 移除 DejaVu 字体以节省空间
-          # dejavu_mappings="share:$out/usr/share"
-          # process_package_mappings "${pkgs.dejavu_fonts}" "$dejavu_mappings" "DejaVu-Fonts"
+          # 重新添加 DejaVu 字体以改善显示效果
+          dejavu_mappings="share:$out/usr/share"
+          process_package_mappings "${pkgs.dejavu_fonts}" "$dejavu_mappings" "DejaVu-Fonts"
 
           # 只保留基本 X11 字体
           fontsunmisc_mappings="lib:$out/usr/share/fonts"
