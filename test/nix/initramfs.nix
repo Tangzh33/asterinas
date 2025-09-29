@@ -16,22 +16,18 @@ let
     ++ lib.optionals (benchmark != null) [ benchmark.package ]
     ++ lib.optionals (syscall != null) [ syscall.package ]
     ++ lib.optionals (xfce != null) [
-         xfce.xfwm4
-         xfce.xfdesktop
-         pkgs.xfce.thunar
-         pkgs.xfce.xfce4-panel
-         pkgs.xfce.xfce4-terminal
-         pkgs.xfce.mousepad
-         pkgs.xfce.xfce4-appfinder
-         pkgs.xfce.xfce4-settings
-         pkgs.xfce.tumbler
+         xfce.xfwm4          # 窗口管理器 (必需)
+         xfce.xfdesktop      # 桌面 (必需)
+         pkgs.xfce.xfce4-panel # 面板 (必需)
+         pkgs.xfce.xfce4-terminal # 终端 (必需)
+         # 移除了: thunar, mousepad, xfce4-appfinder, xfce4-settings, tumbler
        ]
     ++ lib.optionals (xorg != null) [
          xorg.xtrans
          xorg.libxcb
          xorg.xcbproto
          xorg.libx11
-         pkgs.xorg.xeyes
+         # 移除 xeyes (测试程序)
          xorg.libevdev
          xorg.xorgServer
          pkgs.xorg.xf86videofbdev
@@ -39,12 +35,12 @@ let
          pkgs.xorg.xf86inputevdev
          pkgs.dbus
          pkgs.hicolor-icon-theme
-         pkgs.evtest
-         pkgs.adwaita-icon-theme
+         # 移除 evtest (测试工具)
+         # 简化图标主题，只保留基本的
          pkgs.gdk-pixbuf
-         pkgs.gdk-pixbuf.dev
-         pkgs.gdk-pixbuf-xlib
-         pkgs.librsvg
+         # 移除 gdk-pixbuf.dev (开发文件)
+         # 移除 gdk-pixbuf-xlib (可选依赖)
+         # 移除 librsvg (SVG支持，可选)
          pkgs.libjpeg
          pkgs.libpng
          pkgs.shared-mime-info
@@ -52,14 +48,9 @@ let
          pkgs.gsettings-desktop-schemas
          pkgs.glib
          pkgs.glib.bin
-         pkgs.glib-networking
+         # 移除 glib-networking (网络功能，可选)
 
-         # GNOME Games
-         pkgs.gnome-mines
-         pkgs.gnome-sudoku
-         pkgs.five-or-more
-         pkgs.tali
-         pkgs.gnome-chess
+         # 移除所有游戏
        ];
 in stdenvNoCC.mkDerivation {
   name = "initramfs";
@@ -274,71 +265,34 @@ EOF
         > $out/usr/lib/gio/modules/giomodule.cache \
         2> $out/usr/lib/gio/modules/giomodule.cache.log || true
 
-      # Tumbler (thumbnailer)
-      tumbler_mappings="bin:$out/usr/bin lib:$out/usr/lib libexec:$out/usr/libexec share:$out/usr/share"
-      process_package_mappings "${pkgs.xfce.tumbler}" "$tumbler_mappings" "Tumbler"
+      # 移除 Tumbler (缩略图生成器，非必需)
 
-      # Thunar File Manager
-      thunar_mappings="bin:$out/usr/bin etc:$out/etc share:$out/usr/share"
-      process_package_mappings "${pkgs.xfce.thunar}" "$thunar_mappings" "Thunar"
+      # 移除 Thunar 文件管理器 (可以用终端管理文件)
 
-      # Configure Thunar as default file manager
-      mkdir -p $out/usr/share/applications
-      cat > $out/usr/share/applications/mimeapps.list << 'EOF'
-[Default Applications]
-inode/directory=thunar.desktop
-application/x-directory=thunar.desktop
-x-directory/normal=thunar.desktop
+      # 移除 XFCE4 Settings Manager (可选)
 
-[Added Associations]
-inode/directory=thunar.desktop;
-application/x-directory=thunar.desktop;
-EOF
-
-      # Also create system-wide associations
-      mkdir -p $out/etc/xdg
-      cp $out/usr/share/applications/mimeapps.list $out/etc/xdg/mimeapps.list
-
-      # XFCE4 Settings Manager
-      settings_mappings="bin:$out/usr/bin etc:$out/etc share:$out/usr/share"
-      process_package_mappings "${pkgs.xfce.xfce4-settings}" "$settings_mappings" "XFCE4-Settings"
-
-      # XFCE4 Terminal
+      # XFCE4 Terminal (保留，必需)
       terminal_mappings="bin:$out/usr/bin share:$out/usr/share"
       process_package_mappings "${pkgs.xfce.xfce4-terminal}" "$terminal_mappings" "XFCE4-Terminal"
 
-      # Mousepad Text Editor
-      mousepad_mappings="bin:$out/usr/bin share:$out/usr/share"
-      process_package_mappings "${pkgs.xfce.mousepad}" "$mousepad_mappings" "Mousepad"
+      # 移除 Mousepad 文本编辑器 (可选)
 
-      # XFCE4 Application Finder
-      appfinder_mappings="bin:$out/usr/bin share:$out/usr/share"
-      process_package_mappings "${pkgs.xfce.xfce4-appfinder}" "$appfinder_mappings" "XFCE4-AppFinder"
+      # 移除 XFCE4 Application Finder (可选)
 
-      # Install GNOME Games
+      # 移除所有游戏以节省空间
 
-      # GNOME Mines (Minesweeper)
-      mines_mappings="bin:$out/usr/bin share:$out/usr/share"
-      process_package_mappings "${pkgs.gnome-mines}" "$mines_mappings" "GNOME-Mines"
-
-      # GNOME Sudoku
-      sudoku_mappings="bin:$out/usr/bin share:$out/usr/share"
-      process_package_mappings "${pkgs.gnome-sudoku}" "$sudoku_mappings" "GNOME-Sudoku"
-
-      # Five or More (Lines game)
-      fiveormore_mappings="bin:$out/usr/bin share:$out/usr/share"
-      process_package_mappings "${pkgs.five-or-more}" "$fiveormore_mappings" "Five-or-More"
-
-      # Tali (Yahtzee-like dice game)
-      tali_mappings="bin:$out/usr/bin share:$out/usr/share"
-      process_package_mappings "${pkgs.tali}" "$tali_mappings" "Tali"
-
-      # GNOME Chess
-      chess_mappings="bin:$out/usr/bin share:$out/usr/share"
-      process_package_mappings "${pkgs.gnome-chess}" "$chess_mappings" "GNOME-Chess"
-
-      # Install Adwaita Icon Theme
-      cp -raf ${pkgs.adwaita-icon-theme}/share/icons/Adwaita $out/usr/share/icons
+      # Install Adwaita Icon Theme (简化版 - 只复制小尺寸图标)
+      mkdir -p $out/usr/share/icons/Adwaita
+      # 只复制必要的小图标，跳过大图标
+      if [ -d "${pkgs.adwaita-icon-theme}/share/icons/Adwaita/16x16" ]; then
+        cp -r ${pkgs.adwaita-icon-theme}/share/icons/Adwaita/16x16 $out/usr/share/icons/Adwaita/
+      fi
+      if [ -d "${pkgs.adwaita-icon-theme}/share/icons/Adwaita/24x24" ]; then
+        cp -r ${pkgs.adwaita-icon-theme}/share/icons/Adwaita/24x24 $out/usr/share/icons/Adwaita/
+      fi
+      if [ -f "${pkgs.adwaita-icon-theme}/share/icons/Adwaita/index.theme" ]; then
+        cp ${pkgs.adwaita-icon-theme}/share/icons/Adwaita/index.theme $out/usr/share/icons/Adwaita/
+      fi
       # Create icon theme configuration
       mkdir -p $out/usr/share/icons/default/
       cat > $out/usr/share/icons/default/index.theme << 'EOF'
@@ -384,9 +338,9 @@ EOF
       mkdir -p $out/var/cache/fontconfig
       chmod 755 $out/var/cache/fontconfig
 
-      # Install GDK-Pixbuf development tools (includes gdk-pixbuf-pixdata)
-      gdkpixbufdev_mappings="bin:$out/usr/bin include:$out/usr/include lib:$out/usr/lib"
-      process_package_mappings "${pkgs.gdk-pixbuf.dev}" "$gdkpixbufdev_mappings" "GDK-Pixbuf-Dev"
+      # 移除 GDK-Pixbuf 开发工具以节省空间
+      # gdkpixbufdev_mappings="bin:$out/usr/bin include:$out/usr/include lib:$out/usr/lib"
+      # process_package_mappings "${pkgs.gdk-pixbuf.dev}" "$gdkpixbufdev_mappings" "GDK-Pixbuf-Dev"
 
       # Install MIME
       mime_mappings="bin:$out/usr/bin share:$out/usr/share"
@@ -415,13 +369,15 @@ EOF
           # Install scripts
           cp ${./scripts/run_as_xfce.sh} $out/usr/bin/run_as_xfce.sh
 
-          # Install fonts
+          # Install fonts (精简版)
           fontconfig_mappings="bin:$out/usr/bin etc:$out/etc share:$out/usr/share"
           process_package_mappings "${pkgs.fontconfig}" "$fontconfig_mappings" "FontConfig"
 
-          dejavu_mappings="share:$out/usr/share"
-          process_package_mappings "${pkgs.dejavu_fonts}" "$dejavu_mappings" "DejaVu-Fonts"
+          # 移除 DejaVu 字体以节省空间
+          # dejavu_mappings="share:$out/usr/share"
+          # process_package_mappings "${pkgs.dejavu_fonts}" "$dejavu_mappings" "DejaVu-Fonts"
 
+          # 只保留基本 X11 字体
           fontsunmisc_mappings="lib:$out/usr/share/fonts"
           process_package_mappings "${pkgs.xorg.fontsunmisc}" "$fontsunmisc_mappings" "X11-Misc-Fonts"
 
