@@ -15,6 +15,7 @@ use ostd::{
     sync::SpinLock,
     trap::irq::IrqLine,
 };
+use ostd::prelude::println;
 use core::hint::spin_loop;
 
 use component::{init_component, ComponentInitError};
@@ -134,6 +135,7 @@ fn init_mouse_device() {
 /// Wait for controller's acknowledgement
 fn wait_ack() {
     loop {
+        println!("wait_ack loop");
         if STATUS_PORT.get().unwrap().read() & 0x1 != 0 {
             let data = DATA_PORT.get().unwrap().read();
             if data == 0xFA {
