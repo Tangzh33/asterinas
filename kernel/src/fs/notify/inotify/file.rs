@@ -273,7 +273,7 @@ impl FileLike for InotifyFile {
                 Err(e) => {
                     // Put the failed event back at the front
                     self.notifications.write().insert(0, event);
-                    println!("[inotify] read: partial read, returning size {}", size);
+                    // println!("[inotify] read: partial read, returning size {}", size);
                     if consumed_events == 0 {
                         return Err(e); // No events consumed, return error
                     }
