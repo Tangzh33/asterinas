@@ -26,6 +26,8 @@ pub(crate) enum IommuError {
 }
 
 pub(crate) fn init(io_mem_builder: &IoMemAllocatorBuilder) -> Result<(), IommuError> {
+    return Ok(());
+    
     registers::init(io_mem_builder)?;
     invalidate::init();
     dma_remapping::init();
