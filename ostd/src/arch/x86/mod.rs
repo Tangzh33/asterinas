@@ -175,9 +175,11 @@ fn has_avx512() -> bool {
 pub(crate) fn enable_cpu_features() {
     use x86_64::registers::{control::Cr4Flags, model_specific::EferFlags, xcontrol::XCr0Flags};
 
-    CPU_FEATURES.call_once(|| {
+    let features = CPU_FEATURES.call_once(|| {
         let cpuid = CpuId::new();
-        cpuid.get_feature_info().unwrap()
+        cpuid
+            .get_feature_info()
+            .expect("failed to query CPUID feature information")
     });
 
     let mut cr4 = x86_64::registers::control::Cr4::read();
@@ -207,6 +209,11 @@ pub(crate) fn enable_cpu_features() {
     }
 
     cpu::context::enable_essential_features();
+
+    debug_assert!(features.has_pat(), "CPU must support PAT");
+    if features.has_pat() {
+        mm::configure_pat();
+    }
 
     unsafe {
         // enable non-executable page protection
