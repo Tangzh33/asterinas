@@ -124,7 +124,7 @@ impl FileIo for Fb {
     fn ioctl(&self, cmd: IoctlCmd, arg: usize) -> Result<i32> {
         match cmd {
             IoctlCmd::GETVSCREENINFO => {
-                println!("Fb ioctl: Get virtual screen info");
+                // println!("Fb ioctl: Get virtual screen info");
 
                 // Use get_framebuffer_info to access the framebuffer
                 if let Some(framebuffer_guard) = get_framebuffer_info() {
@@ -257,7 +257,7 @@ impl FileIo for Fb {
                 }
             }
             IoctlCmd::GETFSCREENINFO => {
-                println!("Fb ioctl: Get fixed screen info");
+                // println!("Fb ioctl: Get fixed screen info");
 
                 // Use get_framebuffer_info to access the framebuffer
                 if let Some(framebuffer_guard) = get_framebuffer_info() {
@@ -288,12 +288,12 @@ impl FileIo for Fb {
                 Ok(0)
             }
             IoctlCmd::GETCMAP => {
-                println!("Fb ioctl: Get color map");
+                // println!("Fb ioctl: Get color map");
                 // Implement logic to get the color map
                 Ok(0)
             }
             IoctlCmd::PUTCMAP => {
-                println!("Fb ioctl: Set color map");
+                // println!("Fb ioctl: Set color map");
                 // Implement logic to set the color map
                 Ok(0)
             }
