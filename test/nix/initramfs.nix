@@ -27,6 +27,7 @@ let
          pkgs.xfce.xfce4-panel
          pkgs.xfce.xfce4-terminal
          pkgs.xfce.mousepad
+         pkgs.mupdf
          pkgs.xfce.xfce4-appfinder
          pkgs.xfce.xfce4-settings
          pkgs.xfce.tumbler
@@ -234,6 +235,15 @@ in stdenvNoCC.mkDerivation {
       </property>
     </property>
   </property>
+  <property name="desktop-icons" type="empty">
+    <property name="file-icons" type="empty">
+      <property name="show-home" type="bool" value="true"/>
+      <property name="show-filesystem" type="bool" value="true"/>
+      <property name="show-removable" type="bool" value="true"/>
+      <property name="show-trash" type="bool" value="true"/>
+    </property>
+    <property name="icon-size" type="uint" value="48"/>
+  </property>
   <property name="last" type="empty">
     <property name="window-width" type="int" value="708"/>
     <property name="window-height" type="int" value="547"/>
@@ -318,15 +328,23 @@ EOF
 inode/directory=thunar.desktop
 application/x-directory=thunar.desktop
 x-directory/normal=thunar.desktop
+application/pdf=mupdf.desktop
+application/x-pdf=mupdf.desktop
 
 [Added Associations]
 inode/directory=thunar.desktop;
 application/x-directory=thunar.desktop;
+application/pdf=mupdf.desktop;
+application/x-pdf=mupdf.desktop;
 EOF
 
       # Also create system-wide associations
       mkdir -p $out/etc/xdg
       cp $out/usr/share/applications/mimeapps.list $out/etc/xdg/mimeapps.list
+
+      # Create user-specific associations
+      mkdir -p $out/root/.config
+      cp $out/usr/share/applications/mimeapps.list $out/root/.config/mimeapps.list
 
       # XFCE4 Settings Manager
       settings_mappings="bin:$out/usr/bin etc:$out/etc share:$out/usr/share"
@@ -339,6 +357,47 @@ EOF
       # Mousepad Text Editor
       mousepad_mappings="bin:$out/usr/bin share:$out/usr/share"
       process_package_mappings "${pkgs.xfce.mousepad}" "$mousepad_mappings" "Mousepad"
+
+      # MuPDF PDF Viewer
+      mupdf_mappings="bin:$out/usr/bin share:$out/usr/share"
+      process_package_mappings "${pkgs.mupdf}" "$mupdf_mappings" "MuPDF"
+
+      # Create mupdf symlink (pointing to mupdf-x11 for X11 compatibility without OpenGL)
+      ln -sf mupdf-x11 $out/usr/bin/mupdf
+
+      # Create desktop entry for MuPDF
+      chmod -R u+w $out/usr/share/applications 2>/dev/null || true
+      cat > $out/usr/share/applications/mupdf.desktop << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=MuPDF
+Comment=Lightweight PDF Viewer
+Exec=env DISPLAY=:0 mupdf-x11 %f
+Icon=mupdf
+Terminal=false
+Categories=Office;Viewer;
+MimeType=application/pdf;application/x-pdf;
+EOF
+
+      # Copy sample PDF
+      mkdir -p $out/root/Documents
+      cp ${./files/CortenMM_ZGC.pdf} $out/root/Documents/CortenMM_ZGC.pdf
+      cp ${./files/sample-aster.pdf} $out/root/Documents/sample-aster.pdf
+
+      # Create desktop shortcut for the PDF
+      mkdir -p $out/root/Desktop
+      cat > $out/root/Desktop/CortenMM_ZGC.desktop << 'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=CortenMM_ZGC Paper
+Comment=Memory Management Research Paper
+Icon=application-pdf
+Exec=env DISPLAY=:0 mupdf-x11 /root/Documents/CortenMM_ZGC.pdf
+Terminal=false
+Categories=Office;Viewer;
+EOF
+      chmod +x $out/root/Desktop/CortenMM_ZGC.desktop
 
       # XFCE4 Application Finder
       appfinder_mappings="bin:$out/usr/bin share:$out/usr/share"
