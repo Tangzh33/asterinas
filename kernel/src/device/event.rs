@@ -228,8 +228,8 @@ impl FileIo for EventDevice {
                 // Function: Fill `dev->xxx_bits` with kernel's `dev->xxx_bits`
                 // Our implementation: Fill device's corresponding bitmap. To do this, we need to add these bitmaps
                 // for each device when initialzied in kernel, indicating its supportive events. (true)
-                log::error!("The cmd_type is {}", cmd_type);
-                log::error!("The cmd_nr is {}", cmd_nr);
+                // log::error!("The cmd_type is {}", cmd_type);
+                // log::error!("The cmd_nr is {}", cmd_nr);
                 let type_ = EventType::try_from(cmd_nr - 0x20).unwrap();
                 let size = cmd_size;
                 handle_eviocgbit(self.input_device(), type_, size, arg)

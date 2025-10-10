@@ -62,7 +62,7 @@ const ENABLE_MOUSE_CLOCK_BIT: u8 = 0x20;
 
 #[init_component]
 fn init() -> Result<(), ComponentInitError> {
-    log::error!("This is init in kernel/comps/i8042_controller/lib.rs");
+    // log::error!("This is init in kernel/comps/i8042_controller/lib.rs");
 
     DATA_PORT.call_once(|| IoPort::acquire(0x60).unwrap());
     STATUS_PORT.call_once(|| IoPort::acquire(0x64).unwrap());
