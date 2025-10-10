@@ -26,7 +26,7 @@ use crate::KEYBOARD_IRQ_LINE;
 
 
 pub fn init() {
-    log::error!("This is init in kernel/comps/keyboard/src/i8042_keyboard.rs");
+    // log::error!("This is init in kernel/comps/keyboard/src/i8042_keyboard.rs");
     aster_input::register_device("AT Translated Set 2 keyboard".to_string(), Arc::new(I8042Keyboard));
 }
 struct I8042Keyboard;
@@ -78,7 +78,7 @@ impl InputDevice for I8042Keyboard {
 }
 
 pub fn handle_keyboard_input(_trap_frame: &TrapFrame) {
-    log::error!("-----This is new handle_keyboard_input in kernel/comps/i8042_controller/src/i8042_keyboard.rs");
+    // log::error!("-----This is new handle_keyboard_input in kernel/comps/i8042_controller/src/i8042_keyboard.rs");
     let (key, scancode, status) = parse_inputkey();
 
     // Get the current time in microseconds
