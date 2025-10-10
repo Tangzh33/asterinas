@@ -22,7 +22,8 @@ let
          pkgs.xfce.xfce4-terminal # 终端 (必需)
          pkgs.xfce.thunar    # 文件管理器 (已添加)
          pkgs.xfce.xfce4-settings # 设置管理器 (新增)
-         # 移除了: mousepad, xfce4-appfinder, tumbler
+         pkgs.xfce.mousepad  # 文本编辑器
+         pkgs.mupdf          # PDF 查看器
        ]
     ++ lib.optionals (xorg != null) [
          xorg.xtrans
@@ -213,6 +214,15 @@ in stdenvNoCC.mkDerivation {
       </property>
     </property>
   </property>
+  <property name="desktop-icons" type="empty">
+    <property name="file-icons" type="empty">
+      <property name="show-home" type="bool" value="true"/>
+      <property name="show-filesystem" type="bool" value="true"/>
+      <property name="show-removable" type="bool" value="true"/>
+      <property name="show-trash" type="bool" value="true"/>
+    </property>
+    <property name="icon-size" type="uint" value="48"/>
+  </property>
   <property name="last" type="empty">
     <property name="window-width" type="int" value="708"/>
     <property name="window-height" type="int" value="547"/>
@@ -280,15 +290,23 @@ EOF
 inode/directory=thunar.desktop
 application/x-directory=thunar.desktop
 x-directory/normal=thunar.desktop
+application/pdf=mupdf.desktop
+application/x-pdf=mupdf.desktop
 
 [Added Associations]
 inode/directory=thunar.desktop;
 application/x-directory=thunar.desktop;
+application/pdf=mupdf.desktop;
+application/x-pdf=mupdf.desktop;
 EOF
 
       # Also create system-wide associations
       mkdir -p $out/etc/xdg
       cp $out/usr/share/applications/mimeapps.list $out/etc/xdg/mimeapps.list
+
+      # Create user-specific associations
+      mkdir -p $out/root/.config
+      cp $out/usr/share/applications/mimeapps.list $out/root/.config/mimeapps.list
 
       # XFCE4 Settings Manager (重新添加)
       settings_mappings="bin:$out/usr/bin etc:$out/etc share:$out/usr/share"
@@ -297,6 +315,51 @@ EOF
       # XFCE4 Terminal (保留，必需)
       terminal_mappings="bin:$out/usr/bin share:$out/usr/share"
       process_package_mappings "${pkgs.xfce.xfce4-terminal}" "$terminal_mappings" "XFCE4-Terminal"
+
+      # Mousepad Text Editor
+      mousepad_mappings="bin:$out/usr/bin share:$out/usr/share"
+      process_package_mappings "${pkgs.xfce.mousepad}" "$mousepad_mappings" "Mousepad"
+
+      # MuPDF PDF Viewer
+      mupdf_mappings="bin:$out/usr/bin share:$out/usr/share"
+      process_package_mappings "${pkgs.mupdf}" "$mupdf_mappings" "MuPDF"
+
+      # Create mupdf symlink (pointing to mupdf-x11 for X11 compatibility without OpenGL)
+      ln -sf mupdf-x11 $out/usr/bin/mupdf
+
+      # Create desktop entry for MuPDF
+      chmod -R u+w $out/usr/share/applications 2>/dev/null || true
+      cat > $out/usr/share/applications/mupdf.desktop << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=MuPDF
+Comment=Lightweight PDF Viewer
+Exec=env DISPLAY=:0 mupdf-x11 %f
+Icon=mupdf
+Terminal=false
+Categories=Office;Viewer;
+MimeType=application/pdf;application/x-pdf;
+EOF
+
+      # Copy sample PDF
+      mkdir -p $out/root/Documents
+      cp ${./files/CortenMM_ZGC.pdf} $out/root/Documents/CortenMM_ZGC.pdf
+      cp ${./files/sample-aster.pdf} $out/root/Documents/sample-aster.pdf
+
+      # Create desktop shortcut for the PDF
+      mkdir -p $out/root/Desktop
+      cat > $out/root/Desktop/CortenMM_ZGC.desktop << 'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=CortenMM_ZGC Paper
+Comment=Memory Management Research Paper
+Icon=application-pdf
+Exec=env DISPLAY=:0 mupdf-x11 /root/Documents/CortenMM_ZGC.pdf
+Terminal=false
+Categories=Office;Viewer;
+EOF
+      chmod +x $out/root/Desktop/CortenMM_ZGC.desktop
 
       # 移除 Mousepad 文本编辑器 (可选)
 
