@@ -1,11 +1,50 @@
 #!/bin/sh
-chmod a+rw /Desktop/*.desktop
-ln -s /bin/thunar /bin/Thunar
+
+set -eu
+
+create_node() {
+  path="$1"
+  type="$2"
+  major="$3"
+  minor="$4"
+  mode="$5"
+
+  if [ ! -e "$path" ]; then
+    dir=$(dirname "$path")
+    mkdir -p "$dir"
+    mknod "$path" "$type" "$major" "$minor"
+    chmod "$mode" "$path"
+  fi
+}
+
+create_char_node() {
+  create_node "$1" c "$2" "$3" "$4"
+}
+
+create_block_node() {
+  create_node "$1" b "$2" "$3" "$4"
+}
+
+if [ ! -e /dev/fb0 ]; then
+  # Provide basic framebuffer and input nodes for Xorg.
+  create_char_node /dev/fb0          29   0  666
+  # create_char_node /dev/input/mice   13  63  666
+  create_char_node /dev/input/mouse0 13  32  666
+  create_char_node /dev/input/event0 13  64  640
+  create_char_node /dev/input/event1 13  65  640
+fi
+
+# if [ -d /Desktop ]; then
+#   chmod a+rw /Desktop/*.desktop 2>/dev/null || true
+# fi
+
+# if [ ! -e /bin/Thunar ] && [ -e /bin/thunar ]; then
+#   ln -sf /bin/thunar /bin/Thunar
+# fi
 
 # Step 1: run dbus
-#export DBUS_VERBOSE=1
-#export DBUS_DEBUG_OUTPUT=1
 export NO_AT_BRIDGE=1
+mkdir -p /run/dbus
 chmod 755 /run/dbus
 eval "$(/usr/bin/dbus-launch --sh-syntax)"
 
