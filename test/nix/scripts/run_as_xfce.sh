@@ -1,6 +1,17 @@
 #!/bin/sh
-chmod a+rw /Desktop/*.desktop
-ln -s /bin/thunar /bin/Thunar
+
+# Relax permissions for desktop launchers when present
+chmod a+rw /Desktop/*.desktop 2>/dev/null || true
+
+# Select a writable directory for runtime state and PID files
+RUNTIME_DIR=/run
+if ! (mkdir -p "$RUNTIME_DIR" >/dev/null 2>&1 && : > "$RUNTIME_DIR/.xfce-write-test" 2>/dev/null); then
+  RUNTIME_DIR=/tmp/run
+  mkdir -p "$RUNTIME_DIR"
+fi
+rm -f "$RUNTIME_DIR/.xfce-write-test"
+chmod 700 "$RUNTIME_DIR" 2>/dev/null || true
+export XDG_RUNTIME_DIR="$RUNTIME_DIR"
 
 # Step 1: run dbus
 #export DBUS_VERBOSE=1
@@ -10,11 +21,11 @@ chmod 755 /run/dbus
 eval "$(/usr/bin/dbus-launch --sh-syntax)"
 
 if command -v dconf-service >/dev/null 2>&1; then
-  dconf-service > ~/dconf.log 2>&1 & echo $! > /run/dconf-service.pid &
+  dconf-service > ~/dconf.log 2>&1 & echo $! > "$RUNTIME_DIR/dconf-service.pid" &
 fi
 
 # Step 2: run Xorg
-Xorg :0 -modulepath /usr/lib/xorg/modules -config /usr/share/X11/xorg.conf.d/10-fbdev.conf -logverbose 6 -logfile /var/xorg_debug.log -novtswitch -keeptty -keyboard keyboard -pointer mouse0 -xkbdir /usr/share/X11/xkb & echo $! > /run/xorg.pid &
+Xorg :0 -modulepath /usr/lib/xorg/modules -config /usr/share/X11/xorg.conf.d/10-fbdev.conf -logverbose 6 -logfile /var/xorg_debug.log -novtswitch -keeptty -keyboard keyboard -pointer mouse0 -xkbdir /usr/share/X11/xkb & echo $! > "$RUNTIME_DIR/xorg.pid" &
 
 # Step 3: run xfconfd
 export DISPLAY=:0
@@ -40,11 +51,11 @@ xfce4-session &
 if command -v tumblerd >/dev/null 2>&1; then
   tumblerd -n > ~/tumblerd.log 2>&1 &
 fi
-xfsettingsd > ~/xfsettingsd.log 2>&1 & echo $! > /run/xfsettingsd.pid &
+xfsettingsd > ~/xfsettingsd.log 2>&1 & echo $! > "$RUNTIME_DIR/xfsettingsd.pid" &
 
 #Step 4: run xfwm4
 export XFWM4_LOG_FILE="/xfwm4.log"
-xfwm4 --compositor=off & echo $! > /run/xfwm4.pid &
+xfwm4 --compositor=off & echo $! > "$RUNTIME_DIR/xfwm4.pid" &
 #strace -o xfwm4_strace.log /usr/bin/xfwm4 --compositor=off -d &
 #In asterinas /dev/null seems not working well. So needs to use "-d"
 
@@ -55,8 +66,8 @@ for i in $(seq 1 50); do
 done
 
 #Step 5: run xfdesktop
-xfdesktop --enable-debug > ~/xfdesktop.log 2>&1 & echo $! > /run/xfdesktop.pid &
+xfdesktop --enable-debug > ~/xfdesktop.log 2>&1 & echo $! > "$RUNTIME_DIR/xfdesktop.pid" &
 #strace -o xfdesktop_strace.log /usr/bin/xfdesktop --enable-debug > ~/xfdesktop.log 2>&1 &
 
 #Step 6: run xfce4-panel
-xfce4-panel > ~/xfce4-panel.log 2>&1 & echo $! > /run/xfce4-panel.pid &
+xfce4-panel > ~/xfce4-panel.log 2>&1 & echo $! > "$RUNTIME_DIR/xfce4-panel.pid" &
