@@ -19,7 +19,6 @@ aster-time = { path = "comps/time" }
 aster-virtio = { path = "comps/virtio" }
 aster-rights = { path = "libs/aster-rights" }
 aster-systree = { path = "comps/systree" }
-aster-keyboard = { path = "comps/keyboard" }
 component = { path = "libs/comp-sys/component" }
 controlled = { path = "libs/comp-sys/controlled" }
 logo-ascii-art = { path = "libs/logo-ascii-art" }
@@ -66,6 +65,7 @@ takeable = "0.2.2"
 cfg-if = "1.0"
 
 [target.x86_64-unknown-none.dependencies]
+aster-i8042 = { path = "comps/i8042" }
 tdx-guest = { version = "0.2.1", optional = true }
 
 [target.riscv64imac-unknown-none-elf.dependencies]
