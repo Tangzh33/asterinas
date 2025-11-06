@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use alloc::str;
 use aster_console::{AnyConsoleDevice, BitmapFont, ConsoleMode};
 use ostd::sync::LocalIrqDisabled;
 use termio::CFontOp;
@@ -259,7 +260,7 @@ impl<D: TtyDriver> FileIo for Tty<D> {
             self.wait_events(IoEvents::IN, None, || self.ldisc.lock().try_read(&mut buf))?;
         self.pollee.invalidate();
         self.driver.notify_input();
-
+        println!("Tty: blocked read called, read {} bytes, pid: {}, context: {:?}", read_len, current!().pid(), str::from_utf8(&buf[..read_len]));
         // TODO: Confirm what we should do if `write_fallible` fails in the middle.
         writer.write_fallible(&mut buf[..read_len].into())?;
         Ok(read_len)
@@ -273,6 +274,32 @@ impl<D: TtyDriver> FileIo for Tty<D> {
         let len = self.wait_events(IoEvents::OUT, None, || {
             Ok(self.driver.push_output(&buf[..write_len])?)
         })?;
+        self.pollee.invalidate();
+
+        println!("Tty: blocked write called, write {} bytes, pid: {}, context: {:?}", len, current!().pid(), str::from_utf8(&buf[..len]));
+        Ok(len)
+    }
+
+    fn read_nonblocked(&self, writer: &mut VmWriter) -> crate::prelude::Result<usize> {
+        // TODO: Add support for non-blocking mode and timeout
+        let mut buf = vec![0u8; writer.avail().min(IO_CAPACITY)];
+        let read_len = self.ldisc.lock().try_read(&mut buf)?;
+
+        self.pollee.invalidate();
+        self.driver.notify_input();
+
+        // TODO: Confirm what we should do if `write_fallible` fails in the middle.
+        writer.write_fallible(&mut buf[..read_len].into())?;
+        Ok(read_len)
+    }
+
+    fn write_nonblocked(&self, reader: &mut VmReader) -> Result<usize> {
+        let mut buf = vec![0u8; reader.remain().min(IO_CAPACITY)];
+        let write_len = reader.read_fallible(&mut buf.as_mut_slice().into())?;
+
+        // TODO: Add support for non-blocking mode and timeout
+        let len = self.driver.push_output(&buf[..write_len])?;
+
         self.pollee.invalidate();
         Ok(len)
     }
@@ -347,6 +374,9 @@ impl<D: TtyDriver> FileIo for Tty<D> {
                 let mode = console.get_mode().unwrap_or(ConsoleMode::Text);
                 let raw_mode = RawConsoleMode::from(mode);
                 current_userspace!().write_val(arg, &(raw_mode as u32))?;
+            }
+            IoctlCmd::TIOCPKT => {
+                self.ldisc.lock().termios_mut().set_pkt_mode();
             }
             _ => (self.weak_self.upgrade().unwrap() as Arc<dyn Terminal>)
                 .job_ioctl(cmd, arg, false)?,

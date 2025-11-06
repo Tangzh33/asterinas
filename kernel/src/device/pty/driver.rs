@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use alloc::str;
+use aster_logger::println;
 use ostd::sync::SpinLock;
 
 use crate::{
@@ -78,6 +80,8 @@ impl TtyDriver for PtyDriver {
             }
             len += 1;
         }
+
+        println!("context: {:?}", str::from_utf8(chs));
 
         self.pollee.notify(IoEvents::IN);
         Ok(len)

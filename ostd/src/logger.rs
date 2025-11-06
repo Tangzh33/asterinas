@@ -98,3 +98,12 @@ fn get_log_level() -> Option<LevelFilter> {
 
     LevelFilter::from_str(value).ok()
 }
+
+pub fn set_debug_mode(enabled: bool) {
+    let level = if enabled {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Info
+    };
+    log::set_max_level(level);
+}

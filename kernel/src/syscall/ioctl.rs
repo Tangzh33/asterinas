@@ -23,7 +23,14 @@ pub fn sys_ioctl(fd: FileDesc, cmd: u32, arg: Vaddr, ctx: &Context) -> Result<Sy
             let evdevres: i32 = file_owned.ioctl(unsafe { mem::transmute(cmd) }, arg)?;
             return Ok(SyscallReturn::Return(evdevres as _));
         }
-        Err(e) => return Err(e.into()),
+        Err(e) => {
+            if cmd == 0x5441 {
+                IoctlCmd::TIOCGPTPEER
+            } else {
+                println!("ioctl cmd not implemented: {:#x}, {:?}", cmd, e);
+                return Err(e.into());
+            }
+        },
     };
     // let ioctl_cmd = IoctlCmd::from_u32(cmd);
     // let ioctl_cmd = IoctlCmd::try_from(cmd)?;
@@ -72,6 +79,12 @@ pub fn sys_ioctl(fd: FileDesc, cmd: u32, arg: Vaddr, ctx: &Context) -> Result<Sy
                 entry.set_flags(entry.flags() - FdFlags::CLOEXEC);
                 Ok::<_, Error>(0)
             })?
+        }
+        IoctlCmd::TIOCPKT => {
+            let file_owned = file.into_owned();
+            file_owned.ioctl(ioctl_cmd, arg)?;
+
+            0
         }
         // FIXME: ioctl operations involving blocking I/O should be able to restart if interrupted
         _ => {

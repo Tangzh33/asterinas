@@ -47,7 +47,11 @@ struct InodeHandle_ {
 impl InodeHandle_ {
     pub fn read(&self, writer: &mut VmWriter) -> Result<usize> {
         if let Some(ref file_io) = self.file_io {
-            return file_io.read(writer);
+            if self.status_flags().contains(StatusFlags::O_NONBLOCK) {
+                return file_io.read_nonblocked(writer);
+            } else {
+                return file_io.read(writer);
+            }
         }
 
         if !self.path.inode().is_seekable() {
@@ -64,7 +68,11 @@ impl InodeHandle_ {
 
     pub fn write(&self, reader: &mut VmReader) -> Result<usize> {
         if let Some(ref file_io) = self.file_io {
-            return file_io.write(reader);
+            if self.status_flags().contains(StatusFlags::O_NONBLOCK) {
+                return file_io.write_nonblocked(reader);
+            } else {
+                return file_io.write(reader);
+            }
         }
 
         if !self.path.inode().is_seekable() {
@@ -352,6 +360,14 @@ pub trait FileIo: Pollable + Send + Sync + 'static {
     fn read(&self, writer: &mut VmWriter) -> Result<usize>;
 
     fn write(&self, reader: &mut VmReader) -> Result<usize>;
+
+    fn read_nonblocked(&self, writer: &mut VmWriter) -> Result<usize> {
+        self.read(writer)
+    }
+
+    fn write_nonblocked(&self, reader: &mut VmReader) -> Result<usize> {
+        self.write(reader)
+    }
 
     /// See [`FileLike::mmap`].
     fn mmap(&self) -> Result<MemoryToMap> {

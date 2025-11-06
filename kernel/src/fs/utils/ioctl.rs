@@ -29,6 +29,7 @@ pub enum IoctlCmd {
     /// Set window size
     TIOCGWINSZ = 0x5413,
     TIOCSWINSZ = 0x5414,
+    TIOCPKT = 0x5420,
     /// Enable or disable non-blocking I/O mode.
     FIONBIO = 0x5421,
     /// the calling process gives up this controlling terminal

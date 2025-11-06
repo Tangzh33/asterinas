@@ -292,6 +292,18 @@ impl CTermios {
         self.c_lflags.contains(CLocalFlags::ICANON)
     }
 
+    pub(super) fn set_pkt_mode(&mut self) {
+        // This is what gVisor does.
+        // Reference: https://github.com/google/gvisor/blob/98f16343729458037335133c92453e894103b15c/pkg/sentry/fs/tty/termios.go#L298-L309
+        // self.c_iflags
+        //     .remove(CInputFlags::ICRNL | CInputFlags::IXON | CInputFlags::ISTRIP);
+        // self.c_oflags.remove(COutputFlags::OPOST);
+        // self.c_lflags
+        //     .remove(CLocalFlags::ECHO | CLocalFlags::ICANON | CLocalFlags::ISIG);
+        // *self.special_char_mut(CCtrlCharId::VMIN) = 1;
+        // *self.special_char_mut(CCtrlCharId::VTIME) = 0;
+    }
+
     /// Returns whether the input flags contain `ICRNL`.
     ///
     /// The `ICRNL` flag means the `\r` characters in the input should be mapped to `\n`.

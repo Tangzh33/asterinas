@@ -240,6 +240,10 @@ impl LineDiscipline {
         &self.termios
     }
 
+    pub fn termios_mut(&mut self) -> &mut CTermios {
+        &mut self.termios
+    }
+
     pub fn set_termios(&mut self, termios: CTermios) {
         self.termios = termios;
     }

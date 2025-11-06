@@ -109,12 +109,12 @@ impl ClockSource {
         if cycles <= max_cycles {
             self.coeff * cycles
         } else {
-            log::warn!(
-                "The clock source becomes not reliable since an \
-                interval of {} cycles exceeds the maximum delay {}(s)",
-                cycles,
-                max_cycles
-            );
+            // log::warn!(
+            //     "The clock source becomes not reliable since an \
+            //     interval of {} cycles exceeds the maximum delay {}(s)",
+            //     cycles,
+            //     max_cycles
+            // );
             self.coeff * max_cycles
         }
     }

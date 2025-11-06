@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use ostd::logger::{self, set_debug_mode};
+
 use super::SyscallReturn;
 use crate::{
     fs::{
-        file_table::{FdFlags, FileDesc},
-        fs_resolver::{FsPath, AT_FDCWD},
-        notify::fsnotify_open,
-        utils::{AccessMode, CreationFlags},
+        file_table::{FdFlags, FileDesc}, fs_resolver::{AT_FDCWD, FsPath}, inode_handle, notify::fsnotify_open, utils::{AccessMode, CreationFlags}
     },
     prelude::*,
     syscall::constants::MAX_FILENAME_LEN,
@@ -24,9 +23,15 @@ pub fn sys_openat(
         "dirfd = {}, path = {:?}, flags = {}, mode = {}",
         dirfd, path, flags, mode
     );
-
+    let path = path.to_string_lossy();
     let file_handle = {
-        let path = path.to_string_lossy();
+        
+        if path.contains("ptmx") {
+            println!(
+                "pid = {}, dirfd = {}, path = {:?}, flags = {}, mode = {}",
+                ctx.process.pid(), dirfd, path, flags, mode
+            );
+        }
         let fs_path = FsPath::new(dirfd, path.as_ref())?;
         let fs_ref = ctx.thread_local.borrow_fs();
         let mask_mode = mode & !fs_ref.umask().read().get();

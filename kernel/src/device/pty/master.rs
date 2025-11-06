@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use alloc::format;
+use alloc::{format, str};
 
 use ostd::task::Task;
 
@@ -101,6 +101,33 @@ impl FileIo for PtyMaster {
         Ok(len)
     }
 
+    fn read_nonblocked(&self, writer: &mut VmWriter) -> Result<usize> {
+        println!("PtyMaster: read_nonblocked called, {}", current!().pid());
+        let mut buf = vec![0u8; writer.avail().min(IO_CAPACITY)];
+        let read_len = self.slave.driver().try_read(&mut buf)?;
+
+        self.slave.driver().pollee().invalidate();
+        self.slave.notify_output();
+
+        // TODO: Confirm what we should do if `write_fallible` fails in the middle.
+        writer.write_fallible(&mut buf[..read_len].into())?;
+        println!("PtyMaster: read_nonblocked read {} bytes, pid: {}, context: {:?}", read_len, current!().pid(), str::from_utf8(&buf[..read_len]));
+        Ok(read_len)
+    }
+
+    fn write_nonblocked(&self, reader: &mut VmReader) -> Result<usize> {
+        println!("PtyMaster: write_nonblocked called");
+        let mut buf = vec![0u8; reader.remain().min(IO_CAPACITY)];
+        let write_len = reader.read_fallible(&mut buf.as_mut_slice().into())?;
+
+        // TODO: Add support for non-blocking mode and timeout
+        let len = self.slave.push_input(&buf[..write_len])?;
+
+        self.slave.driver().pollee().invalidate();
+        println!("PtyMaster: write_nonblocked wrote {} bytes, pid: {}, context: {:?}", len, current!().pid(), str::from_utf8(&buf[..len]));
+        Ok(len)
+    }
+
     fn ioctl(&self, cmd: IoctlCmd, arg: usize) -> Result<i32> {
         match cmd {
             IoctlCmd::TCGETS
@@ -145,6 +172,9 @@ impl FileIo for PtyMaster {
                     file_table_locked.insert(slave, FdFlags::empty())
                 };
                 return Ok(fd);
+            }
+            IoctlCmd::TIOCPKT => {
+                return self.slave.ioctl(cmd, arg);
             }
             IoctlCmd::FIONREAD => {
                 let len = self.slave.driver().buffer_len() as i32;
