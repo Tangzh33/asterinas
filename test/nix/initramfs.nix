@@ -18,9 +18,9 @@ let
     ++ lib.optionals (xfce != null) [
          xfce.xfwm4
          xfce.xfdesktop
+         xfce.xfterminal
          pkgs.xfce.thunar
          pkgs.xfce.xfce4-panel
-         pkgs.xfce.xfce4-terminal
          pkgs.xfce.mousepad
          pkgs.xfce.xfce4-appfinder
          pkgs.xfce.xfce4-settings
@@ -323,7 +323,7 @@ EOF
 
       # XFCE4 Terminal
       terminal_mappings="bin:$out/usr/bin share:$out/usr/share"
-      process_package_mappings "${pkgs.xfce.xfce4-terminal}" "$terminal_mappings" "XFCE4-Terminal"
+      process_package_mappings "${xfce.xfterminal}" "$terminal_mappings" "XFCE4-Terminal"
 
       # Mousepad Text Editor
       mousepad_mappings="bin:$out/usr/bin share:$out/usr/share"

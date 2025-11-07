@@ -1,0 +1,476 @@
+From df5ad7ab41ca04c2ab45143d720195bf6653b87e Mon Sep 17 00:00:00 2001
+From: Wei Zhang <ruoyuan.zw@antgroup.com>
+Date: Thu, 6 Nov 2025 16:27:41 +0800
+Subject: [PATCH] Debug
+
+Signed-off-by: Wei Zhang <ruoyuan.zw@antgroup.com>
+---
+ meson_options.txt |   2 +-
+ src/pty.cc        |  95 ++++++++++++++++------------------------
+ src/spawn.cc      |   2 +-
+ src/vte.cc        | 107 +++-------------------------------------------
+ src/vtegtk.cc     |   2 +
+ src/vtepty.cc     |   8 +++-
+ 6 files changed, 53 insertions(+), 163 deletions(-)
+
+diff --git a/meson_options.txt b/meson_options.txt
+index b7b6b38..d2e8569 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -32,7 +32,7 @@ option(
+ option(
+   'dbg', # for some reason, 'debug' is "reserved"
+   type: 'boolean',
+-  value: false,
++  value: true,
+   description: 'Enable extra debugging functionality',
+ )
+ 
+diff --git a/src/pty.cc b/src/pty.cc
+index 067dba3..210fdb6 100644
+--- a/src/pty.cc
++++ b/src/pty.cc
+@@ -96,15 +96,14 @@ Pty::unref() noexcept
+ int
+ Pty::get_peer(bool cloexec) const noexcept
+ {
+-        if (!m_pty_fd)
++        if (!m_pty_fd) {
++                g_printerr("[VTE DEBUG] get_peer: m_pty_fd is not valid!\n");
+                 return -1;
++        }
+ 
+-        /* FIXME? else if (m_flags & VTE_PTY_NO_CTTTY)
+-         * No session and no controlling TTY wanted, do we need to lose our controlling TTY,
+-         * perhaps by open("/dev/tty") + ioctl(TIOCNOTTY) ?
+-         */
++        g_printerr("[VTE DEBUG] get_peer: m_pty_fd=%d, flags=0x%x, cloexec=%d\n",
++                   m_pty_fd.get(), (unsigned)m_flags, (int)cloexec);
+ 
+-        /* Now open the PTY peer. Note that this also makes the PTY our controlling TTY. */
+         auto const fd_flags = int{O_RDWR |
+                                   ((m_flags & VTE_PTY_NO_CTTY) ? O_NOCTTY : 0) |
+                                   (cloexec ? O_CLOEXEC : 0)};
+@@ -112,64 +111,57 @@ Pty::get_peer(bool cloexec) const noexcept
+         auto peer_fd = vte::libc::FD{};
+ 
+ #ifdef __linux__
++        g_printerr("[VTE DEBUG] get_peer: trying ioctl(TIOCGPTPEER)...\n");
+         peer_fd = ioctl(m_pty_fd.get(), TIOCGPTPEER, fd_flags);
+-        /* Note: According to the kernel's own tests (tools/testing/selftests/filesystems/devpts_pts.c),
+-         * the error returned when the running kernel does not support this ioctl should be EINVAL.
+-         * However it appears that the actual error returned is ENOTTY. So we check for both of them.
+-         * See issue#182.
+-         */
+         if (!peer_fd &&
+             errno != EINVAL &&
+             errno != ENOTTY) {
+                 auto errsv = vte::libc::ErrnoSaver{};
+-                _vte_debug_print(VTE_DEBUG_PTY, "%s failed: %s\n",
+-                                 "ioctl(TIOCGPTPEER)", g_strerror(errsv));
++                g_printerr("[VTE DEBUG] ioctl(TIOCGPTPEER) failed: %s\n", g_strerror(errsv));
+                 return -1;
+         }
+-
+-        /* Fall back to ptsname + open */
+ #endif
+ 
+         if (!peer_fd) {
++                g_printerr("[VTE DEBUG] get_peer: falling back to ptsname+open...\n");
+                 auto const name = ptsname(m_pty_fd.get());
+                 if (name == nullptr) {
+                         auto errsv = vte::libc::ErrnoSaver{};
+-                        _vte_debug_print(VTE_DEBUG_PTY, "%s failed: %s\n",
+-                                         "ptsname", g_strerror(errsv));
++                        g_printerr("[VTE DEBUG] ptsname failed: %s\n", g_strerror(errsv));
+                         return -1;
+                 }
+ 
+-                _vte_debug_print (VTE_DEBUG_PTY,
+-                                  "Setting up child pty: master FD = %d name = %s\n",
+-                                  m_pty_fd.get(), name);
++                g_printerr("[VTE DEBUG] get_peer: opening PTY peer: master FD = %d name = %s\n",
++                           m_pty_fd.get(), name);
+ 
+                 peer_fd = ::open(name, fd_flags);
+                 if (!peer_fd) {
+                         auto errsv = vte::libc::ErrnoSaver{};
+-                        _vte_debug_print (VTE_DEBUG_PTY, "Failed to open PTY: %s\n",
+-                                          g_strerror(errsv));
++                        g_printerr("[VTE DEBUG] Failed to open PTY peer: %s\n", g_strerror(errsv));
+                         return -1;
+                 }
+         }
+ 
++        g_printerr("[VTE DEBUG] get_peer: got peer_fd=%d\n", peer_fd.get());
++
+         assert(bool(peer_fd));
+ 
+ #if defined(__sun) && defined(HAVE_STROPTS_H)
+-        /* See https://illumos.org/man/7i/streamio */
+         if (isastream (peer_fd.get()) == 1) {
+-                /* https://illumos.org/man/7m/ptem */
++                g_printerr("[VTE DEBUG] get_peer: isastream detected, pushing modules...\n");
+                 if ((ioctl(peer_fd.get(), I_FIND, "ptem") == 0) &&
+                     (ioctl(peer_fd.get(), I_PUSH, "ptem") == -1)) {
++                        g_printerr("[VTE DEBUG] ioctl(I_PUSH, \"ptem\") failed\n");
+                         return -1;
+                 }
+-                /* https://illumos.org/man/7m/ldterm */
+                 if ((ioctl(peer_fd.get(), I_FIND, "ldterm") == 0) &&
+                     (ioctl(peer_fd.get(), I_PUSH, "ldterm") == -1)) {
++                        g_printerr("[VTE DEBUG] ioctl(I_PUSH, \"ldterm\") failed\n");
+                         return -1;
+                 }
+-                /* https://illumos.org/man/7m/ttcompat */
+                 if ((ioctl(peer_fd.get(), I_FIND, "ttcompat") == 0) &&
+                     (ioctl(peer_fd.get(), I_PUSH, "ttcompat") == -1)) {
++                        g_printerr("[VTE DEBUG] ioctl(I_PUSH, \"ttcompat\") failed\n");
+                         return -1;
+                 }
+         }
+@@ -217,7 +209,7 @@ Pty::child_setup() const noexcept
+         auto peer_fd = get_peer();
+         if (peer_fd == -1)
+                 _exit(127);
+-
++        g_printerr("[VTE DEBUG] child_setup: get_peer() returned fd=%d\n", peer_fd); // <-- Added log
+ #ifdef TIOCSCTTY
+         /* On linux, opening the PTY peer above already made it our controlling TTY (since
+          * previously there was none, after the setsid() call). However, it appears that e.g.
+@@ -226,6 +218,7 @@ Pty::child_setup() const noexcept
+         if (!(m_flags & VTE_PTY_NO_CTTY)) {
+                 if (ioctl(peer_fd, TIOCSCTTY, peer_fd) != 0) {
+                         auto errsv = vte::libc::ErrnoSaver{};
++                        g_printerr("[VTE DEBUG] %s failed: ioctl(TIOCSCTTY).\n", __func__);
+                         _vte_debug_print(VTE_DEBUG_PTY, "%s failed: %s\n",
+                                          "ioctl(TIOCSCTTY)", g_strerror(errsv));
+                         _exit(127);
+@@ -344,6 +337,7 @@ static int
+ fd_set_cpkt(vte::libc::FD& fd)
+ {
+         auto ret = 0;
++        return ret;
+ #if defined(TIOCPKT)
+         /* tty_ioctl(4) -> every read() gives an extra byte at the beginning
+          * notifying us of stop/start (^S/^Q) events. */
+@@ -413,39 +407,30 @@ fd_setup(vte::libc::FD& fd)
+ static vte::libc::FD
+ _vte_pty_open_posix(void)
+ {
+-	/* Attempt to open the master. */
++        g_printerr("[VTE DEBUG] _vte_pty_open_posix: calling posix_openpt...\n");
++    /* Attempt to open the master. */
+         auto fd = vte::libc::FD{posix_openpt(O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC)};
+ #ifndef __linux__
+-        /* Other kernels may not support CLOEXEC or NONBLOCK above, so try to fall back */
+         bool need_cloexec = false, need_nonblocking = false;
+-
+ #ifdef __NetBSD__
+-        // NetBSD is a special case: prior to 9.99.101, posix_openpt() will not return
+-        // EINVAL for unknown/unsupported flags but instead silently ignore these flags
+-        // and just return a valid PTY but without the NONBLOCK | CLOEXEC flags set.
+-        // So we need to manually apply these flags there. See issue #2575.
+         int mib[2], osrev;
+         size_t len;
+-
+         mib[0] = CTL_KERN;
+         mib[1] = KERN_OSREV;
+         len = sizeof(osrev);
+         sysctl(mib, 2, &osrev, &len, NULL, 0);
+         if (osrev < 999010100) {
+                 need_cloexec = need_nonblocking = true;
+-                _vte_debug_print(VTE_DEBUG_PTY,
+-                                 "NetBSD < 9.99.101, forcing fallback "
+-                                 "for NONBLOCK and CLOEXEC.\n");
++                g_printerr("[VTE DEBUG] NetBSD < 9.99.101, forcing fallback for NONBLOCK and CLOEXEC.\n");
+         }
+ #else
+-
+         if (!fd && errno == EINVAL) {
+-                /* Try without NONBLOCK and apply the flag afterward */
+                 need_nonblocking = true;
++                g_printerr("[VTE DEBUG] posix_openpt EINVAL, retrying without NONBLOCK...\n");
+                 fd = posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC);
+                 if (!fd && errno == EINVAL) {
+-                        /* Try without CLOEXEC and apply the flag afterwards */
+                         need_cloexec = true;
++                        g_printerr("[VTE DEBUG] posix_openpt EINVAL, retrying without CLOEXEC...\n");
+                         fd = posix_openpt(O_RDWR | O_NOCTTY);
+                 }
+         }
+@@ -454,53 +439,47 @@ _vte_pty_open_posix(void)
+ 
+         if (!fd) {
+                 auto errsv = vte::libc::ErrnoSaver{};
+-                _vte_debug_print(VTE_DEBUG_PTY,
+-                                 "%s failed: %s",
+-                                 "posix_openpt", g_strerror(errsv));
++                g_printerr("[VTE DEBUG] posix_openpt failed: %s\n", g_strerror(errsv));
+                 return {};
+         }
+ 
+ #ifndef __linux__
+         if (need_cloexec && vte::libc::fd_set_cloexec(fd.get()) < 0) {
+                 auto errsv = vte::libc::ErrnoSaver{};
+-                _vte_debug_print(VTE_DEBUG_PTY,
+-                                 "%s failed: %s",
+-                                 "Setting CLOEXEC flag", g_strerror(errsv));
++                g_printerr("[VTE DEBUG] Setting CLOEXEC flag failed: %s\n", g_strerror(errsv));
+                 return {};
+         }
+ 
+         if (need_nonblocking && vte::libc::fd_set_nonblock(fd.get()) < 0) {
+                 auto errsv = vte::libc::ErrnoSaver{};
+-                _vte_debug_print(VTE_DEBUG_PTY,
+-                                 "%s failed: %s",
+-                                 "Setting NONBLOCK flag", g_strerror(errsv));
++                g_printerr("[VTE DEBUG] Setting NONBLOCK flag failed: %s\n", g_strerror(errsv));
+                 return {};
+         }
+ #endif /* !linux */
+ 
++        g_printerr("[VTE DEBUG] _vte_pty_open_posix: fd=%d, calling fd_set_cpkt...\n", fd.get());
+         if (fd_set_cpkt(fd) < 0) {
+                 auto errsv = vte::libc::ErrnoSaver{};
+-                _vte_debug_print(VTE_DEBUG_PTY,
+-                                 "%s failed: %s",
+-                                 "Setting packet mode", g_strerror(errsv));
++                g_printerr("[VTE DEBUG] Setting packet mode failed: %s\n", g_strerror(errsv));
+                 return {};
+         }
+ 
++        g_printerr("[VTE DEBUG] _vte_pty_open_posix: calling grantpt...\n");
+         if (grantpt(fd.get()) != 0) {
+                 auto errsv = vte::libc::ErrnoSaver{};
+-                _vte_debug_print(VTE_DEBUG_PTY, "%s failed: %s\n",
+-                                 "grantpt", g_strerror(errsv));
++                g_printerr("[VTE DEBUG] grantpt failed: %s\n", g_strerror(errsv));
+                 return {};
+         }
+ 
++        g_printerr("[VTE DEBUG] _vte_pty_open_posix: calling unlockpt...\n");
+         if (unlockpt(fd.get()) != 0) {
+                 auto errsv = vte::libc::ErrnoSaver{};
+-                _vte_debug_print(VTE_DEBUG_PTY, "%s failed: %s\n",
+-                                 "unlockpt", g_strerror(errsv));
++                g_printerr("[VTE DEBUG] unlockpt failed: %s\n", g_strerror(errsv));
+                 return {};
+         }
+ 
+-	_vte_debug_print(VTE_DEBUG_PTY, "Allocated pty on fd %d.\n", fd.get());
++    _vte_debug_print(VTE_DEBUG_PTY, "Allocated pty on fd %d.\n", fd.get());
++        g_printerr("[VTE DEBUG] _vte_pty_open_posix: successfully allocated pty fd=%d\n", fd.get());
+ 
+         return fd;
+ }
+diff --git a/src/spawn.cc b/src/spawn.cc
+index 304efec..72fba23 100644
+--- a/src/spawn.cc
++++ b/src/spawn.cc
+@@ -404,7 +404,7 @@ SpawnContext::exec(vte::libc::FD& child_report_error_pipe_write,
+         auto peer_fd = pty()->get_peer(true /* cloexec */);
+         if (peer_fd == -1)
+                 return ExecError::GETPTPEER;
+-
++        g_printerr("[VTE DEBUG] spawn child_setup: get_peer() returned fd=%d\n", peer_fd);
+ #ifdef TIOCSCTTY
+         /* On linux, opening the PTY peer above already made it our controlling TTY (since
+          * previously there was none, after the setsid() call). However, it appears that e.g.
+diff --git a/src/vte.cc b/src/vte.cc
+index 5f2c8f8..fcde4c9 100644
+--- a/src/vte.cc
++++ b/src/vte.cc
+@@ -4443,108 +4443,11 @@ Terminal::pty_io_read(int const fd,
+ 			bp = chunk->begin_writing();
+ 			len = 0;
+ 			do {
+-#if defined(TIOCPKT)
+-                                /* We'd like to read (fd, bp, rem); but due to TIOCPKT mode
+-                                 * there's an extra input byte returned at the beginning.
+-                                 * We need to see what that byte is, but otherwise drop it
+-                                 * and write continuously to chunk->data.
+-                                 */
+-                                auto const save = bp[-1];
+-                                errno = 0;
+-                                ssize_t ret;
+-                                do {
+-                                        ret = read(fd, bp - 1, rem + 1);
+-                                } while (ret == -1 && errno == EINTR);
+-                                auto const pkt_header = bp[-1];
+-                                bp[-1] = save;
+-
+-				switch (ret){
+-					case -1:
+-						err = errno;
+-						goto out;
+-					case 0:
+-						eos = true;
+-						goto out;
+-					default:
+-                                                ret--;
+-
+-                                                if (pkt_header == TIOCPKT_DATA) {
+-                                                        bp += ret;
+-                                                        rem -= ret;
+-                                                        len += ret;
+-                                                } else {
+-                                                        if (pkt_header & TIOCPKT_IOCTL) {
+-                                                                /* We'd like to always be informed when the termios change,
+-                                                                 * so we can e.g. detect when no-echo is en/disabled and
+-                                                                 * change the cursor/input method/etc., but unfortunately
+-                                                                 * the kernel only sends this flag when (old or new) 'local flags'
+-                                                                 * include EXTPROC, which is not used often, and due to its side
+-                                                                 * effects, cannot be enabled by vte by default.
+-                                                                 *
+-                                                                 * FIXME: improve the kernel! see discussion in bug 755371
+-                                                                 * starting at comment 12
+-                                                                 */
+-                                                                pty_termios_changed();
+-                                                        }
+-                                                        if (pkt_header & TIOCPKT_STOP) {
+-                                                                pty_scroll_lock_changed(true);
+-                                                        }
+-                                                        if (pkt_header & TIOCPKT_START) {
+-                                                                pty_scroll_lock_changed(false);
+-                                                        }
+-                                                }
+-						break;
+-				}
+-#elif defined(__sun) && defined(HAVE_STROPTS_H)
+-				static unsigned char ctl_s[128];
+-				struct strbuf ctlbuf, databuf;
+-				int ret, flags = 0;
+-				bool have_data = false;
+-
+-				ctlbuf.buf = (caddr_t)ctl_s;
+-				ctlbuf.maxlen = sizeof(ctl_s);
+-				databuf.buf = (caddr_t)bp;
+-				databuf.maxlen = rem;
+-
+-                                do {
+-                                        ret = getmsg(fd, &ctlbuf, &databuf, &flags);
+-                                } while (ret == -1 && errno == EINTR);
+-				if (ret == -1) {
+-					err = errno;
+-					goto out;
+-				} else if (ctlbuf.len == 1) {
+-					switch (ctl_s[0]) {
+-					case M_IOCTL:
+-						pty_termios_changed();
+-						break;
+-					case M_STOP:
+-						pty_scroll_lock_changed(true);
+-						break;
+-					case M_START:
+-						pty_scroll_lock_changed(false);
+-						break;
+-					case M_DATA:
+-						have_data = true;
+-						break;
+-					}
+-				} else if (ctlbuf.len == -1 && databuf.len != -1) {
+-					// MOREDATA
+-					have_data = true;
+-				}
+-
+-				if (have_data) {
+-					if (databuf.len == 0) {
+-						eos = true;
+-						goto out;
+-					}
+-					bp += databuf.len;
+-					rem -= databuf.len;
+-					len += databuf.len;
+-				}
+-#else /* neither TIOCPKT nor STREAMS pty */
+                                 ssize_t ret;
+                                 do {
+                                         ret = read(fd, bp, rem);
++                                        g_printerr("[VTE DEBUG] None TIOCPKT read(fd=%d, bp=%p - 1, rem=%d + 1) = %zd, errno=%d\n",
++                                                   fd, bp, rem, ret, errno);
+                                 } while (ret == -1 && errno == EINTR);
+ 				switch (ret) {
+ 					case -1:
+@@ -4559,11 +4462,12 @@ Terminal::pty_io_read(int const fd,
+ 						len += ret;
+ 						break;
+ 				}
+-#endif /* */
+ 			} while (rem);
+ out:
+ 			chunk->add_size(len);
+ 			bytes += len;
++                        g_printerr("[VTE DEBUG] bytes read this iteration: %d, total bytes: %u, capacity: %ld, max_bytes: %d\n",
++                                   len, bytes, chunk->capacity_writing(), max_bytes);
+ 		} while (bytes < max_bytes &&
+                          // This means that either a read into a not-yet-¾-full
+                          // chunk used up all the available capacity, so
+@@ -10999,8 +10903,7 @@ Terminal::emit_pending_signals()
+                         match_hilite_update();
+ 		}
+ 
+-		_vte_debug_print(VTE_DEBUG_SIGNALS,
+-				"Emitting `contents-changed'.\n");
++		g_printerr("[VTE DEBUG] Emitting `contents-changed'.\n");
+ 		g_signal_emit(m_terminal, signals[SIGNAL_CONTENTS_CHANGED], 0);
+ 		m_contents_changed_pending = false;
+ 	}
+diff --git a/src/vtegtk.cc b/src/vtegtk.cc
+index dd3b17c..6b37ba7 100644
+--- a/src/vtegtk.cc
++++ b/src/vtegtk.cc
+@@ -1878,6 +1878,7 @@ vte_terminal_class_init(VteTerminalClass *klass)
+          * Emitted whenever the visible appearance of the terminal has changed.
+          * Used primarily by #VteTerminalAccessible.
+          */
++        g_printerr("[VTE DEBUG] vte_terminal_class_init: about to register 'contents-changed' signal\n");
+         signals[SIGNAL_CONTENTS_CHANGED] =
+                 g_signal_new(I_("contents-changed"),
+                              G_OBJECT_CLASS_TYPE(klass),
+@@ -5263,6 +5264,7 @@ vte_terminal_spawn_async(VteTerminal *terminal,
+                          VteTerminalSpawnAsyncCallback callback,
+                          gpointer user_data) noexcept
+ {
++        printf("Tina: %s called\n", __func__);
+         vte_terminal_spawn_with_fds_async(terminal, pty_flags, working_directory, argv, envv,
+                                           nullptr, 0, nullptr, 0,
+                                           spawn_flags,
+diff --git a/src/vtepty.cc b/src/vtepty.cc
+index 2da2675..4000a88 100644
+--- a/src/vtepty.cc
++++ b/src/vtepty.cc
+@@ -307,23 +307,29 @@ try
+         VtePtyPrivate *priv = pty->priv;
+ 
+         if (priv->foreign_fd != -1) {
++                g_printerr("[VTE DEBUG] vte_pty_initable_init: using foreign_fd=%d\n", priv->foreign_fd);
+                 priv->pty = vte::base::Pty::create_foreign(priv->foreign_fd, priv->flags);
+                 priv->foreign_fd = -1;
+         } else {
++                g_printerr("[VTE DEBUG] vte_pty_initable_init: creating new PTY with flags=0x%x\n", priv->flags);
+                 priv->pty = vte::base::Pty::create(priv->flags);
+         }
+ 
+         if (priv->pty == nullptr) {
+                 auto errsv = vte::libc::ErrnoSaver{};
++                g_printerr("[VTE DEBUG] vte_pty_initable_init: PTY creation failed, errno=%d (%s)\n", (int)errsv, g_strerror(errsv));
+                 g_set_error(error, G_IO_ERROR, g_io_error_from_errno(errsv),
+-                            "Failed to open PTY: %s", g_strerror(errsv));
++                            "VTE: Failed to open PTY: %s", g_strerror(errsv));
+                 return FALSE;
++        } else {
++                g_printerr("[VTE DEBUG] vte_pty_initable_init: PTY created successfully\n");
+         }
+ 
+         return !g_cancellable_set_error_if_cancelled(cancellable, error);
+ }
+ catch (...)
+ {
++        vte::log_exception();
+         return vte::glib::set_error_from_exception(error);
+ }
+ 
+-- 
+2.43.0
+

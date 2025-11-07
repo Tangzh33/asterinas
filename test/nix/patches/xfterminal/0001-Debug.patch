@@ -1,0 +1,419 @@
+From b35b7fe9b6f52c6a98b5c4e49344f5c99fe8bc5b Mon Sep 17 00:00:00 2001
+From: Wei Zhang <ruoyuan.zw@antgroup.com>
+Date: Fri, 29 Aug 2025 10:00:29 +0800
+Subject: [PATCH] Debug
+
+Signed-off-by: Wei Zhang <ruoyuan.zw@antgroup.com>
+---
+ terminal/terminal-screen.c | 207 ++++++++++++++++++++++++++++++++++---
+ 1 file changed, 193 insertions(+), 14 deletions(-)
+
+diff --git a/terminal/terminal-screen.c b/terminal/terminal-screen.c
+index 6936f8d..2576e50 100644
+--- a/terminal/terminal-screen.c
++++ b/terminal/terminal-screen.c
+@@ -366,7 +366,15 @@ terminal_screen_class_init (TerminalScreenClass *klass)
+                   G_TYPE_NONE, 0);
+ }
+ 
+-
++static gboolean
++vte_draw_logger (GtkWidget *widget, cairo_t *cr, gpointer user_data)
++{
++  g_print ("[VTE DRAW] The 'draw' signal was emitted on the VTE widget. Widget is mapped: %s, realized: %s\n",
++           gtk_widget_get_mapped(widget) ? "yes" : "no",
++           gtk_widget_get_realized(widget) ? "yes" : "no");
++  /* Return FALSE to allow other handlers (like VTE's internal one) to run. */
++  return FALSE;
++}
+ 
+ static void
+ terminal_screen_init (TerminalScreen *screen)
+@@ -397,7 +405,7 @@ terminal_screen_init (TerminalScreen *screen)
+                             G_CALLBACK (terminal_screen_paste_primary), screen);
+   g_signal_connect_swapped (G_OBJECT (screen->terminal), "paste-clipboard-request",
+                             G_CALLBACK (terminal_screen_paste_clipboard), screen);
+-
++  g_signal_connect (G_OBJECT (screen->terminal), "draw", G_CALLBACK (vte_draw_logger), screen);
+   screen->preferences = terminal_preferences_get ();
+ 
+   g_object_get (G_OBJECT (screen->preferences), "scrolling-bar", &scrollbar, NULL);
+@@ -643,6 +651,36 @@ terminal_screen_draw (GtkWidget *widget,
+   g_signal_handlers_disconnect_by_func (G_OBJECT (screen->terminal),
+                                         G_CALLBACK (terminal_screen_draw), screen);
+ 
++  /* Debug: log rendering / font / geometry state before draw */
++  {
++    PangoFontDescription *vte_font = vte_terminal_get_font (VTE_TERMINAL (screen->terminal));
++    gchar *font_str = vte_font ? pango_font_description_to_string (vte_font) : g_strdup ("(none)");
++    gint char_w = vte_terminal_get_char_width (VTE_TERMINAL (screen->terminal));
++    gint char_h = vte_terminal_get_char_height (VTE_TERMINAL (screen->terminal));
++    glong cols = vte_terminal_get_column_count (VTE_TERMINAL (screen->terminal));
++    glong rows = vte_terminal_get_row_count (VTE_TERMINAL (screen->terminal));
++    gboolean mapped = gtk_widget_get_mapped (GTK_WIDGET (screen->terminal));
++    gboolean realized = gtk_widget_get_realized (GTK_WIDGET (screen->terminal));
++    gdouble font_scale = vte_terminal_get_font_scale (VTE_TERMINAL (screen->terminal));
++
++    g_print ("[RENDER DEBUG] scale_factor=%d width=%d height=%d\n", scale_factor, width, height);
++    g_print ("[RENDER DEBUG] terminal mapped=%s realized=%s\n", mapped ? "yes" : "no", realized ? "yes" : "no");
++    g_print ("[RENDER DEBUG] VTE font='%s' font_scale=%.2f char_w=%d char_h=%d cols=%ld rows=%ld\n",
++             font_str, font_scale, char_w, char_h, cols, rows);
++
++    /* log colors from style context */
++    {
++      GtkStyleContext *ctx_sc = gtk_widget_get_style_context (gtk_widget_get_toplevel (GTK_WIDGET (screen)));
++      GdkRGBA fg, bg;
++      gtk_style_context_get_color (ctx_sc, gtk_widget_get_state_flags (gtk_widget_get_toplevel (GTK_WIDGET (screen))), &fg);
++      gtk_style_context_get_background_color (ctx_sc, gtk_widget_get_state_flags (gtk_widget_get_toplevel (GTK_WIDGET (screen))), &bg);
++      g_print ("[RENDER DEBUG] style fg=(%f,%f,%f,%f) bg=(%f,%f,%f,%f)\n",
++               fg.red, fg.green, fg.blue, fg.alpha, bg.red, bg.green, bg.blue, bg.alpha);
++    }
++
++    g_free (font_str);
++  }
++
+   cairo_save (cr);
+ 
+   /* draw background image; cairo_set_operator() allows PNG transparency */
+@@ -657,7 +695,11 @@ terminal_screen_draw (GtkWidget *widget,
+   surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, width, height);
+   cairo_surface_set_device_scale (surface, scale_factor, scale_factor);
+   ctx = cairo_create (surface);
++
++  g_print ("[RENDER DEBUG] calling gtk_widget_draw on vte terminal\n");
+   gtk_widget_draw (screen->terminal, ctx);
++  g_print ("[RENDER DEBUG] returned from gtk_widget_draw\n");
++
+   cairo_set_source_surface (cr, surface, 0, 0);
+   cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
+   cairo_paint (cr);
+@@ -760,10 +802,16 @@ terminal_screen_get_child_command (TerminalScreen *screen,
+     "/bin/ksh", "/usr/bin/ksh"
+   };
+ 
++  g_print ("=== terminal_screen_get_child_command() Debug ===\n");
++  g_print ("User ID: %d, Effective UID: %d, GID: %d, Effective GID: %d\n",
++           getuid(), geteuid(), getgid(), getegid());
++
+   if (screen->custom_command != NULL)
+     {
++      g_print ("Using custom command from screen: %s\n", screen->custom_command[0]);
+       *command = g_strdup (screen->custom_command[0]);
+       *argv = g_strdupv (screen->custom_command);
++      g_print ("Custom command set successfully\n");
+     }
+   else
+     {
+@@ -773,6 +821,10 @@ terminal_screen_get_child_command (TerminalScreen *screen,
+                     "run-custom-command", &run_custom_command,
+                     NULL);
+ 
++      g_print ("Login shell: %s, Run custom command: %s\n",
++               command_login_shell ? "true" : "false",
++               run_custom_command ? "true" : "false");
++
+       if (run_custom_command)
+         {
+           /* use custom command specified in preferences */
+@@ -780,8 +832,15 @@ terminal_screen_get_child_command (TerminalScreen *screen,
+                         "custom-command", &custom_command,
+                         NULL);
+ 
++          g_print ("Custom command from preferences: '%s'\n", 
++                   custom_command ? custom_command : "(null)");
++
+           if (!g_shell_parse_argv (custom_command, NULL, argv, error))
+             {
++              g_print ("ERROR: Failed to parse custom command '%s': %s\n",
++                       custom_command ? custom_command : "(null)",
++                       error && *error ? (*error)->message : "unknown error");
++
+               if (g_error_matches (*error, G_SHELL_ERROR, G_SHELL_ERROR_EMPTY_STRING))
+                 {
+                   g_free ((*error)->message);
+@@ -789,53 +848,101 @@ terminal_screen_get_child_command (TerminalScreen *screen,
+                 }
+ 
+               g_free (custom_command);
++              g_print ("=== terminal_screen_get_child_command() FAILED ===\n");
+               return FALSE;
+             }
+ 
+           shell_fullpath = *argv[0];
++          g_print ("Parsed custom command successfully, shell: %s\n", shell_fullpath);
+ 
+           g_free (custom_command);
+         }
+       else
+         {
++          g_print ("Determining shell from system...\n");
++          
+           /* use the SHELL environement variable if we're in
+            * non-setuid mode and the path is executable */
+           if (geteuid () == getuid ()
+               && getegid () == getgid ())
+             {
+               shell_fullpath = g_getenv ("SHELL");
++              g_print ("SHELL environment variable: '%s'\n", 
++                       shell_fullpath ? shell_fullpath : "(not set)");
++              
+               if (shell_fullpath != NULL
+                   && g_access (shell_fullpath, X_OK) != 0)
+-                shell_fullpath = NULL;
++                {
++                  g_print ("SHELL '%s' is not executable (access failed: %s)\n",
++                           shell_fullpath, strerror(errno));
++                  shell_fullpath = NULL;
++                }
++              else if (shell_fullpath != NULL)
++                {
++                  g_print ("SHELL '%s' is accessible\n", shell_fullpath);
++                }
++            }
++          else
++            {
++              g_print ("Running in setuid mode, skipping SHELL environment variable\n");
+             }
+ 
+           if (shell_fullpath == NULL)
+             {
++              g_print ("Looking up user in password database...\n");
+               pw = getpwuid (getuid ());
+-              if (pw != NULL
+-                  && pw->pw_shell != NULL
+-                  && g_access (pw->pw_shell, X_OK) == 0)
++              if (pw != NULL)
+                 {
+-                  /* set the shell from the password database */
+-                  shell_fullpath = pw->pw_shell;
++                  g_print ("User found: name='%s', shell='%s'\n", 
++                           pw->pw_name ? pw->pw_name : "(null)",
++                           pw->pw_shell ? pw->pw_shell : "(null)");
++                  
++                  if (pw->pw_shell != NULL
++                      && g_access (pw->pw_shell, X_OK) == 0)
++                    {
++                      /* set the shell from the password database */
++                      shell_fullpath = pw->pw_shell;
++                      g_print ("Using shell from passwd: %s\n", shell_fullpath);
++                    }
++                  else
++                    {
++                      g_print ("Shell from passwd '%s' is not executable (access failed: %s)\n",
++                               pw->pw_shell ? pw->pw_shell : "(null)",
++                               pw->pw_shell ? strerror(errno) : "shell is null");
++                    }
+                 }
+               else
+                 {
++                  g_print ("ERROR: User not found in password database (getpwuid failed: %s)\n",
++                           strerror(errno));
++                }
++
++              if (shell_fullpath == NULL)
++                {
++                  g_print ("Searching for fallback shell...\n");
+                   /* lookup a good fallback */
+                   for (i = 0; i < G_N_ELEMENTS (shells); i++)
+                     {
++                      g_print ("Checking shell: %s ", shells[i]);
+                       if (access (shells[i], X_OK) == 0)
+                         {
+                           shell_fullpath = shells[i];
++                          g_print ("✓ (found)\n");
+                           break;
+                         }
++                      else
++                        {
++                          g_print ("✗ (access failed: %s)\n", strerror(errno));
++                        }
+                     }
+ 
+                   if (G_UNLIKELY (shell_fullpath == NULL))
+                     {
+                       /* the system is truly broken */
++                      g_print ("ERROR: No executable shell found in fallback list!\n");
+                       g_set_error (error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                    _("Unable to determine your login shell."));
++                      g_print ("=== terminal_screen_get_child_command() FAILED ===\n");
+                       return FALSE;
+                     }
+                 }
+@@ -846,19 +953,37 @@ terminal_screen_get_child_command (TerminalScreen *screen,
+       shell_name = g_path_get_basename (shell_fullpath);
+       *command = g_strdup (shell_fullpath);
+ 
++      g_print ("Final shell: %s\n", shell_fullpath);
++      g_print ("Shell basename: %s\n", shell_name);
++
+       if (*argv == NULL)
+         *argv = g_new0 (gchar *, 2);
+       else
+         g_free ((*argv)[0]);
+ 
+       if (command_login_shell)
+-        (*argv)[0] = g_strconcat ("-", shell_name, NULL);
++        {
++          (*argv)[0] = g_strconcat ("-", shell_name, NULL);
++          g_print ("Login shell argv[0]: %s\n", (*argv)[0]);
++        }
+       else
+-        (*argv)[0] = g_strdup (shell_name);
++        {
++          (*argv)[0] = g_strdup (shell_name);
++          g_print ("Normal shell argv[0]: %s\n", (*argv)[0]);
++        }
+ 
+       g_free (shell_name);
+     }
+ 
++  g_print ("Command: %s\n", *command);
++  if (*argv) {
++    g_print ("Arguments:\n");
++    for (i = 0; (*argv)[i] != NULL; i++) {
++      g_print ("  argv[%d]: %s\n", i, (*argv)[i]);
++    }
++  }
++  g_print ("=== terminal_screen_get_child_command() SUCCESS ===\n");
++
+   return TRUE;
+ }
+ 
+@@ -1034,13 +1159,14 @@ terminal_screen_update_background (TerminalScreen *screen)
+   g_return_if_fail (TERMINAL_IS_SCREEN (screen));
+   g_return_if_fail (VTE_IS_TERMINAL (screen->terminal));
+ 
++  g_print("[BG DEBUG] terminal_screen_update_background() called, screen->loader %p\n", screen->loader);
+   if (screen->loader != NULL)
+     {
+       g_signal_handlers_disconnect_by_func (screen->terminal, terminal_screen_draw, screen);
+       g_object_unref (screen->loader);
+       screen->loader = NULL;
+     }
+-
++  g_print("[BG DEBUG] background_mode %d\n", background_mode);
+   g_object_get (G_OBJECT (screen->preferences), "background-mode", &background_mode, NULL);
+ 
+   if (G_UNLIKELY (background_mode == TERMINAL_BACKGROUND_TRANSPARENT))
+@@ -1278,6 +1404,9 @@ terminal_screen_update_colors (TerminalScreen *screen)
+ 
+   if (G_LIKELY (valid_palette))
+     {
++      g_print ("[COLOR DEBUG] Final colors: FG(r=%.2f,g=%.2f,b=%.2f) BG(r=%.2f,g=%.2f,b=%.2f)\n",
++               has_fg ? fg.red : -1.0, has_fg ? fg.green : -1.0, has_fg ? fg.blue : -1.0,
++               has_bg ? screen->background_color.red : -1.0, has_bg ? screen->background_color.green : -1.0, has_bg ? screen->background_color.blue : -1.0);
+       vte_terminal_set_colors (VTE_TERMINAL (screen->terminal),
+                                has_fg ? &fg : NULL,
+                                has_bg ? &screen->background_color : NULL,
+@@ -1717,11 +1846,17 @@ terminal_screen_vte_window_contents_changed (TerminalScreen *screen)
+   GdkRGBA color;
+   GdkRGBA label_color;
+   gboolean has_color;
+-
++  g_print("[DEBUG] terminal_screen_vte_window_contents_changed() called\n");
+   g_return_if_fail (TERMINAL_IS_SCREEN (screen));
+   g_return_if_fail (GTK_IS_LABEL (screen->tab_label));
+   g_return_if_fail (TERMINAL_IS_PREFERENCES (screen->preferences));
+ 
++  /* --- DEBUG: Manually trigger a redraw on the VTE widget --- */
++  /* If this makes characters appear, it confirms VTE's internal redraw call is failing on your system. */
++  g_print("[MANUAL REDRAW] Forcing queue_draw on VTE widget due to contents-changed.\n");
++  gtk_widget_queue_draw(screen->terminal);
++  /* --- END DEBUG --- */
++
+   /* leave if we should not start an update */
+   if (screen->tab_label == NULL
+       || (gtk_widget_get_state_flags (screen->terminal) & GTK_STATE_FLAG_FOCUSED) != 0
+@@ -2065,6 +2200,18 @@ terminal_screen_spawn_async_cb (VteTerminal *terminal,
+ {
+   TerminalScreen *screen = user_data;
+ 
++  g_print ("=== VTE spawn callback ===\n");
++  g_print ("PID: %d\n", (int)pid);
++  if (error) {
++    g_print ("ERROR: %s (domain: %s, code: %d)\n", 
++             error->message,
++             g_quark_to_string(error->domain), 
++             error->code);
++  } else {
++    g_print ("SUCCESS: Process spawned successfully\n");
++  }
++  g_print ("========================\n");
++
+   if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+     return;
+ 
+@@ -2076,7 +2223,7 @@ terminal_screen_spawn_async_cb (VteTerminal *terminal,
+   if (error)
+     {
+       xfce_dialog_show_error (GTK_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (screen))),
+-                              error, _("Failed to execute child"));
++                              error, _("Failed to execute async child"));
+     }
+ #ifdef HAVE_LIBUTEMPTER
+   else
+@@ -2172,7 +2319,11 @@ terminal_screen_launch_child (TerminalScreen *screen)
+ 
+           spawn_flags |= G_SPAWN_FILE_AND_ARGV_ZERO;
+         }
+-
++      g_print ("=== About to spawn VTE process ===\n");
++      g_print ("Command: %s\n", command);
++      g_print ("Working directory: %s\n", screen->working_directory);
++      g_print ("PTY flags: %d\n", pty_flags);
++      g_print ("New Spawn flags: %d\n", spawn_flags);
+       vte_terminal_spawn_async (VTE_TERMINAL (screen->terminal),
+                                 pty_flags,
+                                 screen->working_directory, argv2, env,
+@@ -2183,6 +2334,8 @@ terminal_screen_launch_child (TerminalScreen *screen)
+                                 terminal_screen_spawn_async_cb,
+                                 screen);
+ 
++      g_print ("VTE spawn call completed (async)\n");
++
+       g_free (argv2);
+ 
+       g_strfreev (argv);
+@@ -2987,13 +3140,39 @@ terminal_screen_update_font (TerminalScreen *screen)
+   if (G_LIKELY (font_name != NULL))
+     {
+       font_desc = pango_font_description_from_string (font_name);
++      {
++        gchar *req = g_strdup (font_name);
++        PangoFontDescription *cur = vte_terminal_get_font (VTE_TERMINAL (screen->terminal));
++        gchar *cur_str = cur ? pango_font_description_to_string (cur) : g_strdup ("(none)");
++        gchar *new_str = font_desc ? pango_font_description_to_string (font_desc) : g_strdup ("(none)");
++
++        g_print ("[FONT DEBUG] requested font_name='%s'\n", req);
++        g_print ("[FONT DEBUG] current vte font='%s'\n", cur_str);
++        g_print ("[FONT DEBUG] new font_desc='%s'\n", new_str);
++
++        g_free (req);
++        g_free (cur_str);
++        g_free (new_str);
++      }
+       font_change = !pango_font_description_equal (font_desc,
+                                                    vte_terminal_get_font (VTE_TERMINAL (screen->terminal)));
+       vte_terminal_set_allow_bold (VTE_TERMINAL (screen->terminal), font_allow_bold);
+       vte_terminal_set_font (VTE_TERMINAL (screen->terminal), font_desc);
++
++      /* Log char geometry after setting font */
++      {
++        gint char_w = vte_terminal_get_char_width (VTE_TERMINAL (screen->terminal));
++        gint char_h = vte_terminal_get_char_height (VTE_TERMINAL (screen->terminal));
++        g_print ("[FONT DEBUG] after set_font: char_w=%d char_h=%d\n", char_w, char_h);
++      }
++
+       pango_font_description_free (font_desc);
+       g_free (font_name);
+     }
++  else
++    {
++      g_print ("[FONT DEBUG] no font_name determined\n");
++    } 
+ 
+   if (TERMINAL_IS_WINDOW (toplevel))
+     {
+-- 
+2.43.0
+
