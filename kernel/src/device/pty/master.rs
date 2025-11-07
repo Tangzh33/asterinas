@@ -102,7 +102,7 @@ impl FileIo for PtyMaster {
     }
 
     fn read_nonblocked(&self, writer: &mut VmWriter) -> Result<usize> {
-        println!("PtyMaster: read_nonblocked called, {}", current!().pid());
+        //println!("PtyMaster: read_nonblocked called, {}", current!().pid());
         let mut buf = vec![0u8; writer.avail().min(IO_CAPACITY)];
         let read_len = self.slave.driver().try_read(&mut buf)?;
 
@@ -111,12 +111,12 @@ impl FileIo for PtyMaster {
 
         // TODO: Confirm what we should do if `write_fallible` fails in the middle.
         writer.write_fallible(&mut buf[..read_len].into())?;
-        println!("PtyMaster: read_nonblocked read {} bytes, pid: {}, context: {:?}", read_len, current!().pid(), str::from_utf8(&buf[..read_len]));
+        //println!("PtyMaster: read_nonblocked read {} bytes, pid: {}, context: {:?}", read_len, current!().pid(), str::from_utf8(&buf[..read_len]));
         Ok(read_len)
     }
 
     fn write_nonblocked(&self, reader: &mut VmReader) -> Result<usize> {
-        println!("PtyMaster: write_nonblocked called");
+        //println!("PtyMaster: write_nonblocked called");
         let mut buf = vec![0u8; reader.remain().min(IO_CAPACITY)];
         let write_len = reader.read_fallible(&mut buf.as_mut_slice().into())?;
 
@@ -124,7 +124,7 @@ impl FileIo for PtyMaster {
         let len = self.slave.push_input(&buf[..write_len])?;
 
         self.slave.driver().pollee().invalidate();
-        println!("PtyMaster: write_nonblocked wrote {} bytes, pid: {}, context: {:?}", len, current!().pid(), str::from_utf8(&buf[..len]));
+        //println!("PtyMaster: write_nonblocked wrote {} bytes, pid: {}, context: {:?}", len, current!().pid(), str::from_utf8(&buf[..len]));
         Ok(len)
     }
 

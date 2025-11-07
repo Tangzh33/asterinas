@@ -260,7 +260,7 @@ impl<D: TtyDriver> FileIo for Tty<D> {
             self.wait_events(IoEvents::IN, None, || self.ldisc.lock().try_read(&mut buf))?;
         self.pollee.invalidate();
         self.driver.notify_input();
-        println!("Tty: blocked read called, read {} bytes, pid: {}, context: {:?}", read_len, current!().pid(), str::from_utf8(&buf[..read_len]));
+        //println!("Tty: blocked read called, read {} bytes, pid: {}, context: {:?}", read_len, current!().pid(), str::from_utf8(&buf[..read_len]));
         // TODO: Confirm what we should do if `write_fallible` fails in the middle.
         writer.write_fallible(&mut buf[..read_len].into())?;
         Ok(read_len)
@@ -276,7 +276,7 @@ impl<D: TtyDriver> FileIo for Tty<D> {
         })?;
         self.pollee.invalidate();
 
-        println!("Tty: blocked write called, write {} bytes, pid: {}, context: {:?}", len, current!().pid(), str::from_utf8(&buf[..len]));
+        //println!("Tty: blocked write called, write {} bytes, pid: {}, context: {:?}", len, current!().pid(), str::from_utf8(&buf[..len]));
         Ok(len)
     }
 
