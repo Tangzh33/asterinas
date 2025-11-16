@@ -2,7 +2,7 @@
 
 use alloc::{boxed::Box, sync::Arc, vec};
 
-use aster_console::AnyConsoleDevice;
+use aster_console::{AnyConsoleDevice, FAKE_CONSOLE_NAME};
 use ostd::mm::{Infallible, VmReader, VmWriter};
 use spin::Once;
 
@@ -59,19 +59,25 @@ impl HasConsole for ConsoleDriver {
 }
 
 static N_TTY: Once<Box<[Arc<Tty<ConsoleDriver>>]>> = Once::new();
+static SYSTEM_CONSOLE_INDEX: Once<usize> = Once::new();
 
 pub(in crate::device) fn init() {
     let devices = {
         let mut devices = aster_console::all_devices();
-        // Sort by priorities to ensure that the TTY for the virtio-console device comes first. Is
-        // there a better way than hardcoding this?
+        // Sort by priorities to ensure that the TTY for the virtio-console device comes first.
         devices.sort_by_key(|(name, _)| match name.as_str() {
             aster_virtio::device::console::DEVICE_NAME => 0,
-            aster_framebuffer::CONSOLE_NAME => 1,
-            _ => 2,
+            FAKE_CONSOLE_NAME => 1,
+            aster_framebuffer::CONSOLE_NAME => 2,
+            _ => 3,
         });
         devices
     };
+
+    let system_console_index = devices
+        .iter()
+        .position(|(name, _)| name.as_str() != FAKE_CONSOLE_NAME)
+        .unwrap_or(0);
 
     let ttys = devices
         .into_iter()
@@ -79,6 +85,7 @@ pub(in crate::device) fn init() {
         .map(|(index, (_, device))| create_n_tty(index as _, device))
         .collect();
     N_TTY.call_once(|| ttys);
+    SYSTEM_CONSOLE_INDEX.call_once(|| system_console_index);
 }
 
 fn create_n_tty(index: u32, device: Arc<dyn AnyConsoleDevice>) -> Arc<Tty<ConsoleDriver>> {
@@ -102,7 +109,8 @@ fn create_n_tty(index: u32, device: Arc<dyn AnyConsoleDevice>) -> Arc<Tty<Consol
 
 /// Returns the system console, i.e., `/dev/console`.
 pub fn system_console() -> &'static Arc<Tty<ConsoleDriver>> {
-    &N_TTY.get().unwrap()[0]
+    let index = *SYSTEM_CONSOLE_INDEX.get().unwrap();
+    &N_TTY.get().unwrap()[index]
 }
 
 /// Iterates all TTY devices, i.e., `/dev/tty1`, `/dev/tty2`, e.t.c.
