@@ -76,6 +76,9 @@ pub trait AnyConsoleDevice: Send + Sync + Any + Debug {
     }
 }
 
+pub const FRAMEBUFFER_CONSOLE_NAME: &str = "Framebuffer-Console";
+pub const FAKE_CONSOLE_NAME: &str = "Fake-Console";
+
 pub fn register_device(name: String, device: Arc<dyn AnyConsoleDevice>) {
     COMPONENT
         .get()
@@ -87,10 +90,16 @@ pub fn register_device(name: String, device: Arc<dyn AnyConsoleDevice>) {
 
 pub fn all_devices() -> Vec<(String, Arc<dyn AnyConsoleDevice>)> {
     let console_devices = COMPONENT.get().unwrap().console_device_table.lock();
-    console_devices
+    let mut devices: Vec<_> = console_devices
         .iter()
         .map(|(name, device)| (name.clone(), device.clone()))
-        .collect()
+        .collect();
+
+    if devices.len() == 1 && devices[0].0 == FRAMEBUFFER_CONSOLE_NAME {
+        devices.insert(0, (String::from(FAKE_CONSOLE_NAME), fake_console()));
+    }
+
+    devices
 }
 
 pub fn all_devices_lock<'a>(
@@ -99,6 +108,12 @@ pub fn all_devices_lock<'a>(
 }
 
 static COMPONENT: Once<Component> = Once::new();
+static FAKE_CONSOLE: Once<Arc<dyn AnyConsoleDevice>> = Once::new();
+
+fn fake_console() -> Arc<dyn AnyConsoleDevice> {
+    FAKE_CONSOLE.call_once(|| Arc::new(FakeConsole) as Arc<dyn AnyConsoleDevice>);
+    FAKE_CONSOLE.get().unwrap().clone()
+}
 
 #[init_component]
 fn component_init() -> Result<(), ComponentInitError> {
@@ -118,4 +133,13 @@ impl Component {
             console_device_table: SpinLock::new(BTreeMap::new()),
         })
     }
+}
+
+#[derive(Debug)]
+struct FakeConsole;
+
+impl AnyConsoleDevice for FakeConsole {
+    fn send(&self, _buf: &[u8]) {}
+
+    fn register_callback(&self, _callback: &'static ConsoleCallback) {}
 }
