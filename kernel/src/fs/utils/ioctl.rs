@@ -25,6 +25,10 @@ pub enum IoctlCmd {
     TIOCGWINSZ,
     /// Set window size (0x5414)
     TIOCSWINSZ,
+    /// Set pty packet mode
+    TIOCPKT,
+    /// Get pty packet mode state
+    TIOCGPKT,
     /// Enable or disable non-blocking I/O mode (0x5421).
     FIONBIO,
     /// The calling process gives up this controlling terminal (0x5422)
@@ -90,6 +94,7 @@ impl TryFrom<u32> for IoctlCmd {
             0x541B => Self::FIONREAD,
             0x5413 => Self::TIOCGWINSZ,
             0x5414 => Self::TIOCSWINSZ,
+            0x5420 => Self::TIOCPKT,
             0x5421 => Self::FIONBIO,
             0x5422 => Self::TIOCNOTTY,
             0x5429 => Self::TIOCGSID,
@@ -98,6 +103,7 @@ impl TryFrom<u32> for IoctlCmd {
             0x5452 => Self::FIOASYNC,
             0x80045430 => Self::TIOCGPTN,
             0x40045431 => Self::TIOCSPTLCK,
+            0x80045438 => Self::TIOCGPKT,
             0x80045439 => Self::TIOCGPTLCK,
             0x5441 => Self::TIOCGPTPEER,
             0x4B72 => Self::KDFONTOP,
