@@ -359,6 +359,8 @@ EOF
       # XFCE4 Terminal
       terminal_mappings="bin:$out/usr/bin share:$out/usr/share"
       process_package_mappings "${pkgs.xfce.xfce4-terminal}" "$terminal_mappings" "XFCE4-Terminal"
+      mkdir -p $out/etc/xdg/xfce4/terminal
+      cp ${./patches/xfce4-terminal/terminalrc} $out/etc/xdg/xfce4/terminal/terminalrc
 
       # Mousepad Text Editor
       mousepad_mappings="bin:$out/usr/bin share:$out/usr/share"
