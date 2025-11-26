@@ -390,6 +390,7 @@ EOF
       cp ${./files/CortenMM_ZGC.pdf} $out/root/Documents/CortenMM_ZGC.pdf
       cp ${./files/sample-aster.pdf} $out/root/Documents/sample-aster.pdf
       cp ${./files/Asterinas_Introduction.pdf} $out/root/Documents/Asterinas_Introduction.pdf
+      cp ${./files/atc25-asterinas.pdf} $out/root/Documents/atc25-asterinas.pdf
 
       # Create desktop shortcut for the PDF
       mkdir -p $out/root/Desktop
