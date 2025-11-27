@@ -69,6 +69,12 @@ let
          pkgs.five-or-more
          pkgs.tali
          pkgs.gnome-chess
+         pkgs.superTux
+         pkgs.xgalagapp
+         pkgs.xboard
+         pkgs.lbreakout2
+         pkgs.SDL2
+         pkgs.xscreensaver
          pkgs.galculator
        ];
 
@@ -139,7 +145,7 @@ in stdenvNoCC.mkDerivation {
       create_directory_structure "$source_package" "$dest_base"
 
       # Then copy all files
-      find "$source_package" -type f | while read -r source_file; do
+      find "$source_package" \( -type f -o -type l \) | while read -r source_file; do
         # Get the relative path
         relative_path="''${source_file#$source_package}"
         relative_path="''${relative_path#/}"
@@ -435,6 +441,81 @@ EOF
       chess_mappings="bin:$out/usr/bin share:$out/usr/share"
       process_package_mappings "${pkgs.gnome-chess}" "$chess_mappings" "GNOME-Chess"
 
+      # SuperTux platformer
+      supertux_mappings="bin:$out/usr/bin games:$out/usr/games share:$out/usr/share"
+      process_package_mappings "${pkgs.superTux}" "$supertux_mappings" "SuperTux"
+
+      # XGalaga++ shooter
+      xgalaga_mappings="bin:$out/usr/bin share:$out/usr/share"
+      process_package_mappings "${pkgs.xgalagapp}" "$xgalaga_mappings" "XGalaga++"
+
+      # XBoard chess frontend
+      xboard_mappings="bin:$out/usr/bin share:$out/usr/share"
+      process_package_mappings "${pkgs.xboard}" "$xboard_mappings" "XBoard"
+
+      # LBreakout2 brick breaker
+      lbreakout2_mappings="bin:$out/usr/bin share:$out/usr/share"
+      process_package_mappings "${pkgs.lbreakout2}" "$lbreakout2_mappings" "LBreakout2"
+      mkdir -p $out/run/user/0
+      chmod 700 $out/run/user/0
+      if [ -f "$out/usr/bin/lbreakout2" ]; then
+        mv "$out/usr/bin/lbreakout2" "$out/usr/bin/.lbreakout2-real"
+        cat > "$out/usr/bin/lbreakout2" <<'EOF'
+#!/bin/sh
+set -e
+export XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-/run/user/0}"
+if [ ! -d "$XDG_RUNTIME_DIR" ]; then
+  mkdir -p "$XDG_RUNTIME_DIR"
+  chmod 700 "$XDG_RUNTIME_DIR"
+fi
+LGAMES_DIR="''${HOME:-/root}/.lgames"
+mkdir -p "$LGAMES_DIR"
+if [ ! -f "$LGAMES_DIR/lbreakout2.conf" ] && [ -f /usr/share/lbreakout2/lbreakout2.conf ]; then
+  cp /usr/share/lbreakout2/lbreakout2.conf "$LGAMES_DIR/"
+fi
+export SDL_VIDEODRIVER="''${SDL_VIDEODRIVER:-x11}"
+export SDL_RENDER_DRIVER="''${SDL_RENDER_DRIVER:-software}"
+export SDL_AUDIODRIVER="''${SDL_AUDIODRIVER:-dummy}"
+export ALSOFT_DRIVERS="''${ALSOFT_DRIVERS:-null}"
+exec /usr/bin/.lbreakout2-real "$@"
+EOF
+        chmod +x "$out/usr/bin/lbreakout2"
+      fi
+
+      # Provide a real SDL2 runtime instead of sdl2-compat for SuperTux
+      sdl2_runtime_dir="$out/usr/lib/sdl2-runtime"
+      mkdir -p "$sdl2_runtime_dir"
+      if [ -d "${pkgs.SDL2}/lib" ]; then
+        cp -af ${pkgs.SDL2}/lib/libSDL2*.so* "$sdl2_runtime_dir"/ 2>/dev/null || true
+      fi
+
+      # Wrap SuperTux to enforce software SDL2 runtime defaults
+      if [ -f "$out/usr/games/supertux2" ]; then
+        mv "$out/usr/games/supertux2" "$out/usr/games/.supertux2-real"
+        cat > "$out/usr/games/supertux2" <<'EOF'
+#!/bin/sh
+export LD_LIBRARY_PATH="/usr/lib/sdl2-runtime''${LD_LIBRARY_PATH:+:''$LD_LIBRARY_PATH}"
+export SDL_VIDEODRIVER="''${SDL_VIDEODRIVER:-x11}"
+export SDL_RENDER_DRIVER="''${SDL_RENDER_DRIVER:-software}"
+export SDL_AUDIODRIVER="''${SDL_AUDIODRIVER:-dummy}"
+export ALSOFT_DRIVERS="''${ALSOFT_DRIVERS:-null}"
+exec /usr/games/.supertux2-real "$@"
+EOF
+        chmod +x "$out/usr/games/supertux2"
+        ln -sf ../games/supertux2 "$out/usr/bin/supertux2"
+      fi
+
+      # XScreenSaver suite
+      xscreensaver_mappings="bin:$out/usr/bin lib:$out/usr/lib libexec:$out/usr/libexec share:$out/usr/share"
+      process_package_mappings "${pkgs.xscreensaver}" "$xscreensaver_mappings" "XScreenSaver"
+
+      # Ensure xscreensaver helper binaries exist even if packaged as symlinks
+      for xscreensaver_exec in xscreensaver xscreensaver-demo xscreensaver-settings xscreensaver-command; do
+        if [ ! -e "$out/usr/bin/$xscreensaver_exec" ] && [ -e "${pkgs.xscreensaver}/bin/$xscreensaver_exec" ]; then
+          cp "${pkgs.xscreensaver}/bin/$xscreensaver_exec" "$out/usr/bin/$xscreensaver_exec"
+        fi
+      done
+
       # Galculator (Calculator application)
       galculator_mappings="bin:$out/usr/bin share:$out/usr/share"
       process_package_mappings "${pkgs.galculator}" "$galculator_mappings" "Galculator"
@@ -592,6 +673,47 @@ EOF
       cp $out/usr/share/applications/org.gnome.five-or-more.desktop $out/Desktop/
       cp $out/usr/share/applications/org.gnome.Mines.desktop $out/Desktop/
       cp $out/usr/share/applications/galculator.desktop $out/Desktop/
+      extra_game_desktops="xgalaga.desktop xgalaga++.desktop xboard.desktop lbreakout2.desktop"
+      for game_desktop in $extra_game_desktops; do
+        if [ -f "$out/usr/share/applications/$game_desktop" ]; then
+          cp "$out/usr/share/applications/$game_desktop" $out/Desktop/
+        fi
+      done
+      if [ ! -e "$out/Desktop/xgalaga.desktop" ] && [ ! -e "$out/Desktop/xgalaga++.desktop" ]; then
+        xgalaga_fallback="$(find "$out/usr/share/applications" -maxdepth 1 -type f \( -name '*xgalaga*.desktop' -o -name '*XGalaga*.desktop' \) | head -n 1)"
+        if [ -n "$xgalaga_fallback" ]; then
+          cp "$xgalaga_fallback" $out/Desktop/
+        fi
+      fi
+
+      # Add SuperTux desktop shortcut if available
+      supertux_desktop=""
+      if [ -f "$out/usr/share/applications/io.supertux2.SuperTux.desktop" ]; then
+        supertux_desktop="$out/usr/share/applications/io.supertux2.SuperTux.desktop"
+      elif [ -f "$out/usr/share/applications/supertux2.desktop" ]; then
+        supertux_desktop="$out/usr/share/applications/supertux2.desktop"
+      else
+        supertux_desktop="$(find "$out/usr/share/applications" -maxdepth 1 -type f \
+          \( -name '*SuperTux*.desktop' -o -name '*supertux*.desktop' \) | head -n 1)"
+      fi
+
+      if [ -n "$supertux_desktop" ]; then
+        cp "$supertux_desktop" $out/Desktop/
+      fi
+
+      # Add XScreenSaver desktop shortcuts if available
+      for desktop_file in xscreensaver.desktop xscreensaver-settings.desktop; do
+        if [ -f "$out/usr/share/applications/$desktop_file" ]; then
+          cp "$out/usr/share/applications/$desktop_file" $out/Desktop/
+        fi
+      done
+      if [ ! -f "$out/Desktop/xscreensaver.desktop" ]; then
+        xscreensaver_fallback="$(find "$out/usr/share/applications" -maxdepth 1 -type f \
+          \( -name '*XScreenSaver*.desktop' -o -name '*xscreensaver*.desktop' \) | head -n 1)"
+        if [ -n "$xscreensaver_fallback" ]; then
+          cp "$xscreensaver_fallback" $out/Desktop/
+        fi
+      fi
     ''}
 
     # Copy application packages
