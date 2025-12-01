@@ -121,6 +121,7 @@ impl EvdevDevice {
 
     /// Distributes events to all opened evdev files.
     pub(self) fn pass_events(&self, events: &[InputEvent]) {
+        // log::error!("[DEBUG] pass_events called with {} events", events.len());
         let mut opened_files = self.opened_files.lock();
 
         // Send events to all opened evdev files using their producers.

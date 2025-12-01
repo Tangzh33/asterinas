@@ -42,7 +42,7 @@ pub(super) fn init(controller: &mut I8042Controller) -> Result<(), I8042Controll
         return Err(I8042ControllerError::DeviceResetFailed);
     }
     // The reset command may take some time to finish. Try again a few times.
-    if (0..5).find_map(|_| controller.wait_and_recv_data().ok()) != Some(PS2_BAT_OK) {
+    if (0..100000).find_map(|_| controller.wait_and_recv_data().ok()) != Some(PS2_BAT_OK) {
         return Err(I8042ControllerError::DeviceResetFailed);
     }
     // See <https://wiki.osdev.org/I8042_PS/2_Controller#Detecting_PS/2_Device_Types> for a list of IDs.
@@ -141,6 +141,7 @@ impl InputDevice for I8042Keyboard {
 }
 
 fn handle_keyboard_input(_trap_frame: &TrapFrame) {
+    // log::error!("[DEBUG] handle_keyboard_input called");
     if !I8042_CONTROLLER.is_completed() {
         return;
     }

@@ -262,6 +262,7 @@ impl InputDevice for I8042Mouse {
 }
 
 fn handle_mouse_input(_trap_frame: &TrapFrame) {
+    // log::error!("[DEBUG] handle_mouse_input called");
     if !I8042_CONTROLLER.is_completed() {
         return;
     }

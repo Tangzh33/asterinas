@@ -132,16 +132,16 @@ impl I8042Controller {
         const DATA_PORT_ADDR: u16 = 0x60;
         const STATUS_OR_COMMAND_PORT_ADDR: u16 = 0x64;
 
-        if ACPI_INFO
-            .get()
-            .unwrap()
-            .boot_flags
-            .is_some_and(|flags| !flags.motherboard_implements_8042())
-        {
-            // The PS/2 controller does not exist. See:
-            // <https://uefi.org/specs/ACPI/6.5/05_ACPI_Software_Programming_Model.html#ia-pc-boot-architecture-flags>.
-            return Err(I8042ControllerError::NotPresent);
-        }
+        // if ACPI_INFO
+        //     .get()
+        //     .unwrap()
+        //     .boot_flags
+        //     .is_some_and(|flags| !flags.motherboard_implements_8042())
+        // {
+        //     // The PS/2 controller does not exist. See:
+        //     // <https://uefi.org/specs/ACPI/6.5/05_ACPI_Software_Programming_Model.html#ia-pc-boot-architecture-flags>.
+        //     return Err(I8042ControllerError::NotPresent);
+        // }
 
         let controller = Self {
             data_port: IoPort::acquire(DATA_PORT_ADDR).unwrap(),
