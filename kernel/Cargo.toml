@@ -37,7 +37,7 @@ cpio-decoder = { path = "libs/cpio-decoder" }
 xarray = { path = "libs/xarray" }
 intrusive-collections = "0.9.5"
 paste = "1.0"
-time = { version = "0.3", default-features = false, features = ["alloc"] }
+time = { version = "=0.3.41", default-features = false, features = ["alloc"] }
 
 # parse elf file
 xmas-elf = "0.10.0"
